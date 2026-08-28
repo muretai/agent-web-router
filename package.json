@@ -1,7 +1,7 @@
 {
   "name": "@muretai/agent-web-router",
   "version": "0.2.0",
-  "description": "Pick how an AI agent enters a website: the page (WebMCP), the server (MCP), or the door (Agent Card + Agent Entry) — decided by what the agent has on hand, with a site-declared handoff checked against the site's own card. Zero dependencies.",
+  "description": "Find the agent-facing side of a website — the door (Agent Card + Agent Entry), the server (MCP), the tools in the page (WebMCP) — check it is really the site's, and pick the way in by what the agent has on hand. GET-only: it never browses, scrapes, or knocks; your harness's browser and key do that. Zero dependencies.",
   "type": "module",
   "main": "agent-web-router.mjs",
   "exports": {

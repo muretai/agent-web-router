@@ -1,6 +1,13 @@
 # Agent Web Router
 
-**Pick how an AI agent enters a website.**
+**Find the agent-facing side of a website, and pick the way in.**
+
+Your IDE or agent harness already has a browser. This is not another one. Before that
+browser is opened — and often instead of it — the router finds what a site put up *for
+agents*: the door (an Agent Card and the Agent Entry it names), a declared MCP server, the
+tools registered in the page, and the signposts around them. It checks that what it found is
+really the site's, and orders the ways in by what the agent has on hand. Then it stops:
+browsing is the harness's browser's job, and knocking is the key holder's.
 
 A site can be entered three ways, and they are not rivals:
 
@@ -20,8 +27,9 @@ this tool makes:
 The router does three things and nothing else: **probe** an origin (GET only — it never POSTs,
 never runs page script, never opens a browser), **route** by what is on hand, and **check a
 handoff** — a tool result that says "the rest of this happens at the door / on this page / on
-this server" — against the site's own card. It does not mint keys, sign, or knock; it hands
-whatever holds the key the exact thing to POST.
+this server" — against the site's own card. It does not browse, scrape, mint keys, sign, or
+knock: when the page is the way in, it hands the page to the browser your harness already
+has; when the door is, it hands whatever holds the key the exact thing to POST.
 
 Zero dependencies. Node ≥ 20. MIT. Status: **0.2.0, not yet on npm.**
 

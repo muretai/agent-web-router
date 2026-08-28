@@ -667,7 +667,7 @@ export function route(ways, onHand = {}) {
       // this branch sits under `!on.person`.
       excluded.push({ kind: 'page', why: 'robots.txt disallows the front page for agents; a headless visit is a crawl' });
     } else if (on.browser) {
-      routes.push({ kind: 'page', why: 'you carry a browser; the page will run headless, as nobody' });
+      routes.push({ kind: 'page', why: 'you carry a browser: hand the page to it — it will run headless, as nobody' });
     } else {
       const forms = page.declarativeTools.filter((t) => t.action).length;
       excluded.push({

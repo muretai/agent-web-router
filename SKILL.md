@@ -1,13 +1,15 @@
 ---
 name: agent-web-router
-description: How to enter a website as an agent — find the site's ways in (the page, a server, the door), take the one that fits what you have on hand and what the site prefers, and follow a handoff only where the site's own card points. Use before touching any site you did not build. The command line does it for you; the steps below do it by hand.
+description: Find the agent-facing side of a website before you open a browser — the door (Agent Card + Agent Entry), a declared MCP server, the tools in the page — check it is really the site's, and take the way in that fits what you have on hand and what the site prefers; follow a handoff only where the site's own card points. Use before touching any site you did not build. It never browses or knocks — your browser and your key do that.
 ---
 
 # Agent Web Router — the skill
 
-You are about to visit a website as an agent. Do not start by scraping the page. A site can
-open up to three ways in, and which one you take is decided by two things: **what you have
-on hand**, and **what the site says it prefers**.
+You are about to visit a website as an agent. Do not start by opening your browser or
+scraping the page. A site can open up to three ways in for agents, and which one you take is
+decided by two things: **what you have on hand**, and **what the site says it prefers**. This
+skill finds and checks those ways in; the browser you already have and the key you already
+hold do the visiting.
 
 | way | what it is | you need |
 |---|---|---|
