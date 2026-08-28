@@ -1,0 +1,52 @@
+{
+  "name": "@muretai/agent-web-router",
+  "version": "0.1.0",
+  "description": "Pick how an AI agent enters a website: the page (WebMCP), the server (MCP), or the door (Agent Card + Agent Entry) — decided by what the agent has on hand, with a site-declared handoff checked against the site's own card. Zero dependencies.",
+  "type": "module",
+  "main": "agent-web-router.mjs",
+  "exports": {
+    ".": "./agent-web-router.mjs"
+  },
+  "bin": {
+    "agent-web-router": "./bin/agent-web-router.mjs"
+  },
+  "files": [
+    "agent-web-router.mjs",
+    "bin/",
+    "spec/",
+    "SKILL.md",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "probe": "node bin/agent-web-router.mjs probe"
+  },
+  "keywords": [
+    "ai-agent",
+    "ai-agents",
+    "agent",
+    "a2a",
+    "agent-card",
+    "agent-entry",
+    "webmcp",
+    "mcp",
+    "handoff",
+    "did",
+    "ed25519",
+    "muretai"
+  ],
+  "license": "MIT",
+  "author": "Muretai",
+  "homepage": "https://muretai.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/muretai/agent-web-router.git"
+  },
+  "bugs": {
+    "url": "https://github.com/muretai/agent-web-router/issues"
+  }
+}
