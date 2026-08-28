@@ -32,6 +32,9 @@ way in; 2 means there is not.
 Everything below is `GET`. Never `POST`, never run the page's script, never open a browser
 to *discover* — only to *use* the page, and only when a person or you can hold a browser.
 
+0. **Read `/robots.txt` first.** If its `*` group disallows `/`, do not visit the page
+   headless — that is a crawl, and the site has answered crawlers already. A person in the
+   tab is not a crawler. The door (step 1) is for agents and is not closed by robots.txt.
 1. **Read the card.** `GET /.well-known/agent-card.json` (fall back to `/.well-known/agent.json`).
    Note `did`, `url`, `skills`, and the `securitySchemes` entry that lists `signedFields`
    (it may sit under `securitySchemes.<name>.agentEntry`) — that entry is the door's contract.
@@ -46,7 +49,8 @@ to *discover* — only to *use* the page, and only when a person or you can hold
    does not exist, you may knock; the door's signed reply is what proves the key.
 4. **Look for a server.** `GET /.well-known/mcp.json`. A server is a route only if you hold
    a token for it, or the card says it needs none.
-5. **Look at the page.** `GET /` as HTML. `<form>` elements with both `toolname` and
+5. **Look at the page.** `GET /` as HTML (and once with `Accept: text/markdown` — a site
+   may hand you a Markdown edition, which is the cheaper way to READ it). `<form>` elements with both `toolname` and
    `tooldescription` are declared tools (VOIX `<tool name description>` elements too).
    `modelContext` in the HTML or in the site's own scripts is a hint that tools are
    registered at runtime — a hint, not a list; only a browser can see that list.

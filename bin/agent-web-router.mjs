@@ -57,6 +57,12 @@ function printProbe(result, decision, knock) {
     const signed = card.signed === true ? 'signed: yes' : card.signed === false ? 'signed: INVALID' : 'signed: no';
     lines.push(`  ${pad('card', 6)} ${card.did ?? '(no did)'}`);
     lines.push(`         ${signed}  door: ${card.url ?? '(none)'}${card.originBound ? '' : '  (NOT this origin)'}  skills: ${card.skills.length}`);
+    const extra = [];
+    if (card.interfaces.length > 1) extra.push(`interfaces: ${card.interfaces.map((i) => i.transport ?? '?').join(', ')}`);
+    if (card.extensions.length) extra.push(`extensions: ${card.extensions.length}`);
+    if (card.domains.length) extra.push(`domains: ${card.domains.join(', ')}`);
+    if (card.domainBinding.found) extra.push(`did-configuration: ${card.domainBinding.namesCardDid ? 'names this did (not verified here)' : 'does NOT name this did'}`);
+    if (extra.length) lines.push(`         ${extra.join('  ')}`);
   } else {
     lines.push(`  ${pad('card', 6)} none (${card.status ?? 'unreachable'})`);
   }
@@ -86,11 +92,18 @@ function printProbe(result, decision, knock) {
     lines.push(`knock: POST ${knock.endpoint ?? '?'}  to ${knock.recipient ?? '?'}${knock.signedFields ? `  sign ${knock.signedFields.join(',')}` : ''}${knock.howTo ? `  how-to ${knock.howTo}` : ''}`);
   }
   const sp = result.signposts;
-  if (sp && (sp.llmsTxt.found || sp.link.length)) {
+  if (sp && (sp.robots.found || sp.llmsTxt.found || sp.markdown.offered || sp.structuredData.length || sp.link.length)) {
     lines.push('');
     lines.push('signposts (not routes)');
-    if (sp.llmsTxt.found) lines.push(`  llms.txt   ${sp.llmsTxt.bytes} bytes${sp.llmsTxt.title ? `  "${sp.llmsTxt.title}"` : ''}`);
-    for (const l of sp.link) lines.push(`  Link       ${l.url}  rel=${l.rel}`);
+    if (sp.robots.found) {
+      const ai = Object.entries(sp.robots.ai);
+      const blocked = ai.filter(([, v]) => v === 'disallow').map(([k]) => k);
+      lines.push(`  robots.txt  everyone may fetch /: ${sp.robots.everyoneMayFetchRoot ? 'yes' : 'NO'}${ai.length ? `; AI crawlers named: ${ai.length}${blocked.length ? ` (disallowed: ${blocked.join(', ')})` : ''}` : ''}${sp.robots.contentSignal ? `; content-signal ${Object.entries(sp.robots.contentSignal).map(([k, v]) => `${k}=${v}`).join(' ')}` : ''}`);
+    }
+    if (sp.llmsTxt.found) lines.push(`  llms.txt    ${sp.llmsTxt.bytes} bytes${sp.llmsTxt.title ? `  "${sp.llmsTxt.title}"` : ''}${sp.llmsFullTxt.found ? `; llms-full.txt ${sp.llmsFullTxt.bytes} bytes` : ''}`);
+    if (sp.markdown.offered) lines.push(`  markdown    offered on Accept: text/markdown (${sp.markdown.bytes} bytes)`);
+    if (sp.structuredData.length) lines.push(`  json-ld     ${sp.structuredData.join(', ')}`);
+    for (const l of sp.link) lines.push(`  Link        ${l.url}  rel=${l.rel}`);
   }
   if (result.notes.length) {
     lines.push('');

@@ -1,6 +1,6 @@
 {
   "name": "@muretai/agent-web-router",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pick how an AI agent enters a website: the page (WebMCP), the server (MCP), or the door (Agent Card + Agent Entry) — decided by what the agent has on hand, with a site-declared handoff checked against the site's own card. Zero dependencies.",
   "type": "module",
   "main": "agent-web-router.mjs",

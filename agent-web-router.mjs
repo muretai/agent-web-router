@@ -38,13 +38,24 @@
 
 import { createPublicKey, verify as cryptoVerify } from 'node:crypto';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 
 export const AGENT_CARD_PATH = '/.well-known/agent-card.json';
 export const AGENT_CARD_PATH_LEGACY = '/.well-known/agent.json';
 export const AGENT_CARD_SIG_PATH = '/.well-known/agent-card.sig.json';
 export const MCP_SERVER_CARD_PATH = '/.well-known/mcp.json';
+export const DID_CONFIGURATION_PATH = '/.well-known/did-configuration.json';
 export const LLMS_TXT_PATH = '/llms.txt';
+export const LLMS_FULL_TXT_PATH = '/llms-full.txt';
+export const ROBOTS_PATH = '/robots.txt';
+
+/** Crawler names AI vendors publish for robots.txt. Reported per name so a site's stance
+ *  toward agents is visible at a glance; the `*` group is what applies to everyone else. */
+export const AI_USER_AGENTS = [
+  'GPTBot', 'ChatGPT-User', 'OAI-SearchBot', 'ClaudeBot', 'Claude-User', 'Claude-SearchBot',
+  'anthropic-ai', 'Google-Extended', 'PerplexityBot', 'Perplexity-User', 'CCBot', 'Bytespider',
+  'Applebot-Extended', 'meta-externalagent', 'Amazonbot', 'DuckAssistBot', 'cohere-ai',
+];
 
 const CARD_ENVELOPE_TYPE = 'agentcard';
 const CARD_ENVELOPE_VERSION = 1;
@@ -240,13 +251,42 @@ export function findDeclarativeTools(html) {
  * creates a route. They are reported so a visitor sees the whole of what the site put up,
  * in one place, without knowing every convention.
  */
-async function readSignposts(get, frontLink) {
-  const out = { llmsTxt: { found: false }, link: [] };
+async function readSignposts(get, front) {
+  const out = { robots: { found: false }, llmsTxt: { found: false }, llmsFullTxt: { found: false }, markdown: { offered: false }, structuredData: [], link: [] };
+
+  const r = await get(ROBOTS_PATH, MAX_CARD_BYTES, 'text/plain, */*;q=0.1');
+  if (r.ok && !/html/i.test(r.contentType || '')) {
+    const parsed = parseRobots(r.text);
+    const ai = {};
+    for (const name of AI_USER_AGENTS) {
+      const v = robotsAllows(parsed, name, '/');
+      if (v !== null) ai[name] = v ? 'allow' : 'disallow';
+    }
+    out.robots = {
+      found: true,
+      everyoneMayFetchRoot: robotsAllows(parsed, '*', '/'),
+      ai,
+      ...(Object.keys(parsed.signals).length ? { contentSignal: parsed.signals } : {}),
+    };
+  }
+
   const l = await get(LLMS_TXT_PATH, MAX_CARD_BYTES, 'text/plain, text/markdown;q=0.9, */*;q=0.1');
   if (l.ok && !/html/i.test(l.contentType || '')) {
     const title = (l.text.match(/^#\s+(.+)$/m) || [])[1] || null;
     out.llmsTxt = { found: true, bytes: Buffer.byteLength(l.text, 'utf8'), title };
+    const f = await get(LLMS_FULL_TXT_PATH, MAX_HTML_BYTES, 'text/plain, text/markdown;q=0.9, */*;q=0.1');
+    if (f.ok && !/html/i.test(f.contentType || '')) out.llmsFullTxt = { found: true, bytes: Buffer.byteLength(f.text, 'utf8') };
   }
+
+  if (front.ok) {
+    // Content negotiation: does the site hand an agent a Markdown edition of the page when
+    // asked (`Accept: text/markdown`)? A read surface, not a way in.
+    const md = await get('/', MAX_HTML_BYTES, 'text/markdown');
+    if (md.ok && /text\/markdown/i.test(md.contentType || '')) out.markdown = { offered: true, bytes: Buffer.byteLength(md.text, 'utf8') };
+    if (/html/i.test(front.contentType || '')) out.structuredData = structuredDataTypes(front.text);
+  }
+
+  const frontLink = front.link;
   if (frontLink) {
     // RFC 8288 Link header on the front page: `<url>; rel="…"`. Report every rel that names
     // an agent-facing document, so a site's own signpost is visible even when the page has
@@ -259,6 +299,104 @@ async function readSignposts(get, frontLink) {
     }
   }
   return out;
+}
+
+/**
+ * robots.txt, read the RFC 9309 way but only as far as a visitor needs: which groups
+ * exist, what each says about the front page (`/`), and any `Content-Signal` lines (the
+ * robots.txt extension for stating ai-train / ai-input / search preferences). The
+ * verdict for a name is the most specific group that names it, else the `*` group; for a
+ * path, the longest matching rule wins and a tie goes to Allow.
+ */
+export function parseRobots(text) {
+  const groups = [];
+  const signals = {};
+  let cur = null;
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.replace(/#.*$/, '').trim();
+    if (!line) continue;
+    const m = line.match(/^([A-Za-z-]+)\s*:\s*(.*)$/);
+    if (!m) continue;
+    const key = m[1].toLowerCase();
+    const val = m[2].trim();
+    if (key === 'user-agent') {
+      if (!cur || cur.rulesStarted) { cur = { agents: [], allow: [], disallow: [], rulesStarted: false }; groups.push(cur); }
+      cur.agents.push(val.toLowerCase());
+    } else if (key === 'disallow' || key === 'allow') {
+      if (!cur) continue;
+      cur.rulesStarted = true;
+      cur[key].push(val);
+    } else if (key === 'content-signal') {
+      for (const part of val.split(',')) {
+        const [k, v] = part.split('=').map((s) => s.trim().toLowerCase());
+        if (k) signals[k] = v ?? '';
+      }
+    }
+  }
+  return { groups, signals };
+}
+
+function robotsRuleMatches(rule, path) {
+  if (rule === '') return false;
+  const escaped = rule.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*');
+  const re = new RegExp('^' + (escaped.endsWith('\\$') ? escaped.slice(0, -2) + '$' : escaped));
+  return re.test(path);
+}
+
+/** true when `name` (or `*`) may fetch `path`; `null` when robots.txt says nothing about it. */
+export function robotsAllows(parsed, name, path = '/') {
+  const lower = String(name).toLowerCase();
+  const group = parsed.groups.find((g) => g.agents.includes(lower)) ?? parsed.groups.find((g) => g.agents.includes('*'));
+  if (!group) return null;
+  let best = null;
+  for (const [verdict, rules] of [['allow', group.allow], ['disallow', group.disallow]]) {
+    for (const r of rules) {
+      if (!robotsRuleMatches(r, path)) continue;
+      if (!best || r.length > best.rule.length || (r.length === best.rule.length && verdict === 'allow')) best = { rule: r, verdict };
+    }
+  }
+  return best ? best.verdict === 'allow' : true;
+}
+
+/** `@type` values declared in the page's JSON-LD blocks — what the page says it is. */
+export function structuredDataTypes(html) {
+  const types = new Set();
+  const re = /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m;
+  const collect = (node, depth = 0) => {
+    if (!node || typeof node !== 'object' || depth > 4) return;
+    if (Array.isArray(node)) { node.forEach((n) => collect(n, depth + 1)); return; }
+    const t = node['@type'];
+    if (typeof t === 'string') types.add(t);
+    else if (Array.isArray(t)) t.forEach((x) => typeof x === 'string' && types.add(x));
+    if (node['@graph']) collect(node['@graph'], depth + 1);
+  };
+  while ((m = re.exec(html)) !== null) {
+    try { collect(JSON.parse(m[1])); } catch { /* not JSON: not structured data */ }
+    if (types.size >= 32) break;
+  }
+  return [...types];
+}
+
+/** Does /.well-known/did-configuration.json (Well Known DID Configuration) name `did`?
+ *  Entries are JWTs or JSON-LD credentials; only the NAMING is checked here, not the
+ *  proof — and the result says so. */
+export function didConfigurationNames(doc, did) {
+  const entries = Array.isArray(doc?.linked_dids) ? doc.linked_dids : [];
+  for (const e of entries) {
+    try {
+      if (typeof e === 'string') {
+        const parts = e.split('.');
+        if (parts.length < 2) continue;
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+        if (payload.iss === did || payload.sub === did || payload.vc?.credentialSubject?.id === did) return true;
+      } else if (e && typeof e === 'object') {
+        const issuer = typeof e.issuer === 'string' ? e.issuer : e.issuer?.id;
+        if (issuer === did || e.credentialSubject?.id === did) return true;
+      }
+    } catch { /* an unreadable entry names nothing */ }
+  }
+  return false;
 }
 
 export function imperativeHint(html) {
@@ -317,7 +455,8 @@ export async function probe(origin, opts = {}) {
 
   // ---- card
   const card = { found: false, path: null, status: null, did: null, url: null, originBound: false,
-    signed: 'absent', openDoor: false, skills: [], name: null, prefer: null, card: null };
+    signed: 'absent', openDoor: false, skills: [], name: null, prefer: null,
+    interfaces: [], extensions: [], domains: [], domainBinding: { found: false }, card: null };
   let res = await get(AGENT_CARD_PATH, MAX_CARD_BYTES, 'application/json');
   let path = AGENT_CARD_PATH;
   if (!res.ok) {
@@ -342,7 +481,24 @@ export async function probe(origin, opts = {}) {
       card.name = typeof doc.name === 'string' ? doc.name : null;
       card.openDoor = Boolean(doc.agentEntry?.open_door || doc.muretai?.open_door);
       card.prefer = parsePrefer(doc.agentEntry?.prefer ?? doc.muretai?.prefer);
-      card.skills = Array.isArray(doc.skills) ? doc.skills.map((s) => ({ id: s?.id ?? null, name: s?.name ?? null, description: s?.description ?? null })) : [];
+      // A2A: the main url's transport plus any additional interfaces (JSONRPC / GRPC /
+      // HTTP+JSON), and extension URIs — the card's own account of how else to reach it.
+      const main = { url: card.url, transport: typeof doc.preferredTransport === 'string' ? doc.preferredTransport : 'JSONRPC' };
+      card.interfaces = [main, ...(Array.isArray(doc.additionalInterfaces) ? doc.additionalInterfaces : [])]
+        .filter((i) => i && isHttpUrl(i.url))
+        .map((i) => ({ url: i.url, transport: typeof i.transport === 'string' ? i.transport : null }))
+        .filter((i, idx, arr) => arr.findIndex((j) => j.url === i.url && j.transport === i.transport) === idx);
+      card.extensions = (Array.isArray(doc.capabilities?.extensions) ? doc.capabilities.extensions : [])
+        .map((e) => (typeof e?.uri === 'string' ? e.uri : null)).filter(Boolean);
+      card.domains = Array.isArray(doc.domains) ? doc.domains.filter((d) => typeof d === 'string') : [];
+      // Well Known DID Configuration: the domain's own statement that it controls the DID —
+      // the other half of the origin binding. Naming only; the proof is not verified here.
+      const dc = await get(DID_CONFIGURATION_PATH, MAX_CARD_BYTES, 'application/json');
+      if (dc.ok) {
+        const dcDoc = parseJSON(dc.text);
+        card.domainBinding = dcDoc ? { found: true, namesCardDid: card.did ? didConfigurationNames(dcDoc, card.did) : false, verified: false } : { found: false };
+      }
+      card.skills =Array.isArray(doc.skills) ? doc.skills.map((s) => ({ id: s?.id ?? null, name: s?.name ?? null, description: s?.description ?? null })) : [];
       card.originBound = Boolean(card.url && safeOrigin(card.url) === dialled);
       if (!card.originBound) notes.push(`card.url (${card.url}) does not name the dialled origin — the door is not here`);
       if (!card.did) notes.push('card carries no did');
@@ -381,7 +537,7 @@ export async function probe(origin, opts = {}) {
   }
 
   // ---- the page
-  const page = { reachable: false, status: null, declarativeTools: [], imperativeHint: null };
+  const page = { reachable: false, status: null, declarativeTools: [], imperativeHint: null, robotsAllowRoot: null };
   const pres = await get('/', MAX_HTML_BYTES, 'text/html');
   page.status = pres.status;
   if (pres.ok && /html/i.test(pres.contentType || '')) {
@@ -393,8 +549,9 @@ export async function probe(origin, opts = {}) {
     notes.push(`front page is ${pres.contentType || 'of unknown type'}, not HTML`);
   }
 
-  // ---- signposts (informative; never a route)
-  const signposts = await readSignposts(get, pres.link);
+  // ---- signposts (informative; only robots.txt reaches into routing)
+  const signposts = await readSignposts(get, pres);
+  if (signposts.robots.found) page.robotsAllowRoot = signposts.robots.everyoneMayFetchRoot;
 
   return { origin: dialled, probedAt: new Date().toISOString(), ways: { card, mcp, page }, signposts, notes };
 }
@@ -504,6 +661,11 @@ export function route(ways, onHand = {}) {
   if (!on.person) {
     if (!pageHasTools) {
       excluded.push({ kind: 'page', why: page.reachable ? 'the page declares no tools' : 'no page answered' });
+    } else if (page.robotsAllowRoot === false) {
+      // A headless visit to the page is a crawler's visit, and robots.txt is the site's
+      // standing answer to crawlers. A person in the tab is not a crawler, which is why
+      // this branch sits under `!on.person`.
+      excluded.push({ kind: 'page', why: 'robots.txt disallows the front page for agents; a headless visit is a crawl' });
     } else if (on.browser) {
       routes.push({ kind: 'page', why: 'you carry a browser; the page will run headless, as nobody' });
     } else {

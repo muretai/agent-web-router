@@ -89,8 +89,12 @@ async function startSite(build) {
   const id = makeIdentity();
   let routes = {};
   let headers = {};
+  let markdown = null;
   const server = http.createServer((req, res) => {
     const path = req.url.split('?')[0];
+    if (path === '/' && markdown && /text\/markdown/.test(req.headers.accept || '')) {
+      res.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8', ...headers }); res.end(markdown); return;
+    }
     const hit = routes[path];
     if (!hit) { res.writeHead(404, { 'content-type': 'text/plain' }); res.end('not found'); return; }
     const [type, body] = hit;
@@ -106,6 +110,10 @@ async function startSite(build) {
   if (parts.html) routes['/'] = ['text/html; charset=utf-8', parts.html];
   for (const [p, body] of Object.entries(parts.scripts ?? {})) routes[p] = ['application/javascript', body];
   if (parts.llms) routes['/llms.txt'] = ['text/plain; charset=utf-8', parts.llms];
+  if (parts.llmsFull) routes['/llms-full.txt'] = ['text/plain; charset=utf-8', parts.llmsFull];
+  if (parts.robots) routes['/robots.txt'] = ['text/plain', parts.robots];
+  if (parts.didConfig) routes['/.well-known/did-configuration.json'] = ['application/json', JSON.stringify(parts.didConfig)];
+  if (parts.markdown) markdown = parts.markdown;
   if (parts.headers) headers = parts.headers;
   return { base, id, close: () => new Promise((r) => server.close(r)) };
 }
@@ -320,6 +328,108 @@ test('VOIX <tool> elements are listed beside WebMCP forms, each with its dialect
     const { out } = await probeJSON(site.base);
     assert.deepEqual(out.ways.page.declarativeTools.map((t) => [t.dialect, t.name]), [['webmcp', 'book_table'], ['voix', 'add_to_cart']]);
     assert.ok(!out.route.routes.some((r) => r.kind === 'page'), 'a VOIX tool still needs a browser');
+  } finally { await site.close(); }
+});
+
+// ================================================================ 0.2: robots, markdown, json-ld, the card's other faces
+
+const ROBOTS_MIXED = `# example
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Allow: /
+Content-Signal: ai-train=no, search=yes, ai-input=yes
+
+User-agent: *
+Disallow: /private/
+Allow: /
+`;
+
+test('robots.txt is read per AI crawler name, with Content-Signal, and the * group decides for everyone else', async () => {
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), html: HTML_WITH_TOOLS, robots: ROBOTS_MIXED }));
+  try {
+    const { out } = await probeJSON(site.base, '--browser');
+    const r = out.signposts.robots;
+    assert.equal(r.found, true);
+    assert.equal(r.everyoneMayFetchRoot, true);
+    assert.equal(r.ai.GPTBot, 'disallow');
+    assert.equal(r.ai.ClaudeBot, 'allow');
+    assert.equal(r.ai.PerplexityBot, 'allow', 'an unnamed crawler falls to the * group');
+    assert.deepEqual(r.contentSignal, { 'ai-train': 'no', search: 'yes', 'ai-input': 'yes' });
+    assert.ok(out.route.routes.some((x) => x.kind === 'page'), 'the page is open to everyone, so a headless visit is fine');
+  } finally { await site.close(); }
+});
+
+test('a robots.txt that closes the front page to everyone excludes the HEADLESS page route, not the person\'s', async () => {
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), html: HTML_WITH_TOOLS, robots: 'User-agent: *\nDisallow: /\n' }));
+  try {
+    const headless = await probeJSON(site.base, '--browser');
+    assert.equal(headless.out.signposts.robots.everyoneMayFetchRoot, false);
+    assert.ok(!headless.out.route.routes.some((x) => x.kind === 'page'));
+    assert.match(headless.out.route.excluded.find((x) => x.kind === 'page').why, /robots\.txt/);
+    assert.equal(headless.out.route.routes[0].kind, 'card', 'the door is for agents; robots.txt does not close it');
+
+    const person = await probeJSON(site.base, '--person');
+    assert.equal(person.out.route.routes[0].kind, 'page', 'a person in the tab is not a crawler');
+  } finally { await site.close(); }
+});
+
+test('llms-full.txt, a Markdown edition on Accept: text/markdown, and JSON-LD types are reported', async () => {
+  const html = '<!doctype html><html><head><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"Example Studio"},{"@type":"WebSite"}]}</script></head><body><h1>Shop</h1></body></html>';
+  const site = await startSite((base, id) => ({
+    card: makeCard(base, id.did), html,
+    llms: '# Example Studio\n', llmsFull: '# Example Studio\n\nEverything.\n',
+    markdown: '# Shop\n\nWelcome.\n',
+  }));
+  try {
+    const { out } = await probeJSON(site.base);
+    assert.equal(out.signposts.llmsFullTxt.found, true);
+    assert.equal(out.signposts.markdown.offered, true);
+    assert.ok(out.signposts.markdown.bytes > 0);
+    assert.deepEqual(out.signposts.structuredData, ['Organization', 'WebSite']);
+    assert.equal(out.ways.page.reachable, true, 'the HTML edition is still what the page route reads');
+  } finally { await site.close(); }
+});
+
+test('a site with no Markdown edition reports markdown: not offered', async () => {
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), html: HTML_PLAIN }));
+  try {
+    const { out } = await probeJSON(site.base);
+    assert.equal(out.signposts.markdown.offered, false);
+    assert.deepEqual(out.signposts.structuredData, []);
+  } finally { await site.close(); }
+});
+
+function jwtNaming(did) {
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  return `${b64({ alg: 'EdDSA', typ: 'JWT' })}.${b64({ iss: did, sub: did, vc: { credentialSubject: { id: did } } })}.c2ln`;
+}
+
+test('the card\'s other faces: A2A interfaces, extensions, domains, and whether did-configuration names the DID', async () => {
+  const site = await startSite((base, id) => {
+    const card = makeCard(base, id.did);
+    card.preferredTransport = 'JSONRPC';
+    card.additionalInterfaces = [{ url: `${base}/`, transport: 'JSONRPC' }, { url: `${base}/grpc`, transport: 'GRPC' }];
+    card.capabilities = { extensions: [{ uri: 'https://example.com/ext/one', description: 'one' }] };
+    card.domains = ['example.com'];
+    return { card, didConfig: { '@context': 'https://identity.foundation/.well-known/did-configuration/v1', linked_dids: [jwtNaming(id.did)] } };
+  });
+  try {
+    const { out } = await probeJSON(site.base);
+    assert.deepEqual(out.ways.card.interfaces, [{ url: `${site.base}/`, transport: 'JSONRPC' }, { url: `${site.base}/grpc`, transport: 'GRPC' }]);
+    assert.deepEqual(out.ways.card.extensions, ['https://example.com/ext/one']);
+    assert.deepEqual(out.ways.card.domains, ['example.com']);
+    assert.deepEqual(out.ways.card.domainBinding, { found: true, namesCardDid: true, verified: false });
+  } finally { await site.close(); }
+});
+
+test('a did-configuration that names another DID is reported as not naming this one', async () => {
+  const other = makeIdentity();
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), didConfig: { linked_dids: [jwtNaming(other.did)] } }));
+  try {
+    const { out } = await probeJSON(site.base);
+    assert.deepEqual(out.ways.card.domainBinding, { found: true, namesCardDid: false, verified: false });
   } finally { await site.close(); }
 });
 

@@ -23,7 +23,7 @@ handoff** — a tool result that says "the rest of this happens at the door / on
 this server" — against the site's own card. It does not mint keys, sign, or knock; it hands
 whatever holds the key the exact thing to POST.
 
-Zero dependencies. Node ≥ 20. MIT. Status: **0.1.0, not yet on npm.**
+Zero dependencies. Node ≥ 20. MIT. Status: **0.2.0, not yet on npm.**
 
 ## Try it
 
@@ -36,9 +36,11 @@ node bin/agent-web-router.mjs probe https://shop.example --no-key      # you hol
 node bin/agent-web-router.mjs probe https://shop.example --json
 ```
 
-A probe reads four things from the origin you name, all with GET: the Agent Card at
+A probe reads the origin you name with GET only: the Agent Card at
 `/.well-known/agent-card.json` (falling back to the legacy `/.well-known/agent.json`) and its
-signature at `/.well-known/agent-card.sig.json`; the MCP server card at `/.well-known/mcp.json`
+signature at `/.well-known/agent-card.sig.json` (plus the card's A2A `additionalInterfaces`,
+extension URIs, `domains`, and whether `/.well-known/did-configuration.json` names the card's
+DID — naming only, the proof is not verified); the MCP server card at `/.well-known/mcp.json`
 (SEP-2127, a draft at the time of writing); and the front page's HTML, from which it lists the
 **declarative** WebMCP tools (`<form toolname=… tooldescription=…>`) and reports a hint when
 the **imperative** API (`document.modelContext`) is referenced — the imperative tool list is
@@ -47,7 +49,7 @@ only observable by running the page, so the probe never claims it.
 Output, for a site that runs an Agent Entry and has a couple of declarative tools:
 
 ```
-agent-web-router 0.1.0 · https://shop.example
+agent-web-router 0.2.0 · https://shop.example
 
 ways in
   card   did:key:z6MkExample…
@@ -70,9 +72,11 @@ knock: POST https://shop.example/  to did:key:z6MkExample…  sign contextId,fro
 Every way appears in exactly one of `route` and `excluded`, so "why not X" is always
 answered. Exit status is 0 when there is something to take and 2 when there is not.
 
-**Signposts.** Sites describe themselves to agents in many competing ways — `llms.txt`, a
-`Link` header pointing at the card, VOIX `<tool>` elements beside WebMCP forms. The probe
-reads the ones sites actually deploy and reports them
+**Signposts.** Sites describe themselves to agents in many competing ways — `robots.txt`
+(per AI-crawler verdicts and `Content-Signal`), `llms.txt` and `llms-full.txt`, a Markdown
+edition on `Accept: text/markdown`, JSON-LD `@type`s, a `Link` header pointing at the card,
+VOIX `<tool>` elements beside WebMCP forms. The probe reads the ones sites actually deploy
+and reports them
 in one `signposts` block so a visitor sees the whole of what the site put up without knowing
 every convention. None of them is a way in, so none of them creates a route.
 
@@ -93,6 +97,10 @@ attempting the attack in `test/`.
   fails its own signature is exactly what a substituted card looks like. An *absent*
   signature is allowed through with a note: the door's signed reply is what proves the key.
 - **A probe is GET only.** Nothing here POSTs; the test suite asserts it.
+- **robots.txt is honoured for a headless visit.** If the `*` group disallows the front page,
+  the page is not a route for an agent alone — a headless visit is a crawl. A person in the
+  tab is not a crawler, so their page route is untouched. The door is for agents and is not
+  closed by robots.txt.
 
 ## The site designs the order
 
