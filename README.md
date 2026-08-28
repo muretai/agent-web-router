@@ -6,8 +6,9 @@ Your IDE or agent harness already has a browser. This is not another one. Before
 browser is opened — and often instead of it — the router finds what a site put up *for
 agents*: the door (an Agent Card and the Agent Entry it names), a declared MCP server, the
 tools registered in the page, and the signposts around them. It checks that what it found is
-really the site's, and orders the ways in by what the agent has on hand. Then it stops:
-browsing is the harness's browser's job, and knocking is the key holder's.
+really the site's, and orders the ways in by what the agent has on hand. When the door is the
+way in and the agent holds a key, it knocks — one signed message, one signed reply, verified.
+Browsing stays the harness's browser's job, and the key stays the agent's own.
 
 A site can be entered three ways, and they are not rivals:
 
@@ -24,14 +25,14 @@ this tool makes:
 - **the agent is alone** → the door first (its key is all it needs), the server if it holds a
   token, the page only if it carries a browser of its own.
 
-The router does three things and nothing else: **probe** an origin (GET only — it never POSTs,
-never runs page script, never opens a browser), **route** by what is on hand, and **check a
-handoff** — a tool result that says "the rest of this happens at the door / on this page / on
-this server" — against the site's own card. It does not browse, scrape, mint keys, sign, or
-knock: when the page is the way in, it hands the page to the browser your harness already
-has; when the door is, it hands whatever holds the key the exact thing to POST.
+The router does four things and nothing else: **probe** an origin (GET only — it never runs
+page script, never opens a browser), **route** by what is on hand, **check a handoff** — a tool
+result that says "the rest of this happens at the door / on this page / on this server" —
+against the site's own card, and **knock**: POST one signed message at the door with a key the
+agent already holds, and verify the signed reply. It does not browse, scrape, or mint keys:
+when the page is the way in, it hands the page to the browser your harness already has.
 
-Zero dependencies. Node ≥ 20. MIT. Status: **0.2.0, not yet on npm.**
+Zero dependencies. Node ≥ 20. MIT. Status: **0.3.0, not yet on npm.**
 
 ## Try it
 
@@ -57,7 +58,7 @@ only observable by running the page, so the probe never claims it.
 Output, for a site that runs an Agent Entry and has a couple of declarative tools:
 
 ```
-agent-web-router 0.2.0 · https://shop.example
+agent-web-router 0.3.0 · https://shop.example
 
 ways in
   card   did:key:z6MkExample…
@@ -134,6 +135,31 @@ re-orders what is on offer), and **come from a card that failed its own signatur
 excluded card declares nothing). The rest of the path — "you read, now let's make it a
 relationship" — is the site's to design too, with a handoff.
 
+## Knock
+
+```
+node bin/agent-web-router.mjs knock https://shop.example --key ./visitor.key --text "Do you have tables tonight?"
+node bin/agent-web-router.mjs knock https://shop.example                     # no key: prints the door's own how-to, sends nothing
+```
+
+`knock` completes the card route: it probes, and only if the door survived every refusal
+above does it POST one A2A `message/send` — the six fields `contextId, from, messageId,
+text, timestamp, to` canonicalised and signed with Ed25519 — to the endpoint the card names,
+on the origin you dialled. The reply is verified before it is shown: signed by **the DID the
+card names** (never the reply's own `from`), addressed to you, within 300 s. A reply that
+fails any of those is printed with the reason and exit 2; a door's refusal (a JSON-RPC error)
+is printed as what it is — an answer that teaches — with its how-to.
+
+`--key` is a key you already hold: the muretai key file (`{"seed": "<64 hex>", …}`) or a bare
+64-hex seed. **Nothing here mints a key.** Where a key comes from and where it lives — per
+visit, per machine, per site — decides whether the site sees one returning visitor or a
+stranger every time, and that is the agent's decision. Without a key, `knock` sends nothing
+and prints the door's own instructions for making one.
+
+The signing bytes are checked against the Agent Entry conformance vectors in `test/`
+(canonical JSON, the six-field payload, did:key derivation, the envelopes a door must
+refuse) — two runtimes, one contract.
+
 ## Handoff
 
 A tool result — from a WebMCP tool, an MCP server, or a door — can carry a **handoff**: where
@@ -167,11 +193,12 @@ Exit 0 when every entry is accepted, 2 when anything is refused or there is noth
 
 ## What it does not do, and why
 
-It never mints a key, signs, or POSTs. A key is an identity, and where it lives — per visit,
-per machine, per site — decides whether the site sees one returning visitor or a stranger
-every time. That is a decision the caller owns, so the router stops at `describeKnock(card)`:
-the endpoint, the recipient DID, the six signed fields and the how-to, lifted from the card's
-own `securitySchemes`, for whatever holds the key.
+It never mints a key, and it never browses. A key is an identity, and where it lives — per
+visit, per machine, per site — decides whether the site sees one returning visitor or a
+stranger every time; that is the agent's decision, so the router only ever signs with a key it
+was given. The page is the harness's browser's to run. `describeKnock(card)` — the endpoint,
+the recipient DID, the six signed fields and the how-to, lifted from the card's own
+`securitySchemes` — remains available for a harness that prefers to knock with its own code.
 
 ## Library
 

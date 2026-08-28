@@ -20,25 +20,28 @@
  *   an agent alone        -> the door first (its key is all it needs), the server if it
  *                            holds a token, the page only if it carries a browser
  *
- * The router does three things, and only three:
+ * The router does four things, and only four:
  *
  *   probe(origin)              discover which ways THIS origin offers. GETs only: it never
- *                              POSTs, never runs page script, never opens a browser.
+ *                              runs page script, never opens a browser.
  *   route(ways, onHand)        order those ways by what the agent has on hand.
  *   checkHandoff(handoff, …)   accept a site-declared continuation ("the rest of this
  *                              happens at the door / on this page / on this server") only
  *                              when the origin's own card names where it points.
+ *   knock(origin, {key,…})     complete the card route: POST one signed message at the door
+ *                              with a key the caller ALREADY HOLDS, verify the signed reply.
  *
- * It does NOT mint keys, sign, or knock. The exact thing to POST at the door is returned by
- * describeKnock(card) for whatever holds the key. Why the split: the key is an identity,
- * and where it lives (per visit? per machine? per site?) is a decision the caller owns.
+ * It does NOT mint keys, and it does NOT browse. The key is an identity, and where it lives
+ * (per visit? per machine? per site?) is a decision the caller owns; the page, when it is the
+ * way in, is the harness's own browser's to run. describeKnock(card) still returns the door's
+ * contract for a harness that prefers to knock with its own code.
  *
  * Zero dependencies. Node >= 20 (global fetch, node:crypto Ed25519).
  */
 
-import { createPublicKey, verify as cryptoVerify } from 'node:crypto';
+import { createPrivateKey, createPublicKey, randomUUID, sign as cryptoSign, verify as cryptoVerify } from 'node:crypto';
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';
 
 export const AGENT_CARD_PATH = '/.well-known/agent-card.json';
 export const AGENT_CARD_PATH_LEGACY = '/.well-known/agent.json';
@@ -94,6 +97,23 @@ export function canonicalJSON(v) {
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 const B58_INDEX = new Map([...B58].map((c, i) => [c, BigInt(i)]));
 const MAX_B58_LEN = 512;   // a DID is ~48 chars; the cap keeps a hostile `did` from buying CPU
+
+function b58encode(data) {
+  let n = 0n;
+  for (const b of data) n = (n << 8n) | BigInt(b);
+  let out = '';
+  while (n > 0n) { out = B58[Number(n % 58n)] + out; n /= 58n; }
+  let pad = 0;
+  for (const b of data) { if (b === 0) pad++; else break; }
+  return '1'.repeat(pad) + out;
+}
+
+/** 32 raw Ed25519 public-key bytes (Buffer or hex) -> `did:key:z…`. */
+export function didFromPublicKey(pub) {
+  const raw = Buffer.isBuffer(pub) ? pub : Buffer.from(pub, 'hex');
+  if (raw.length !== 32) throw new TypeError('an ed25519 public key is 32 bytes');
+  return 'did:key:z' + b58encode(Buffer.concat([Buffer.from([0xed, 0x01]), raw]));
+}
 
 function b58decode(s) {
   if (typeof s !== 'string') throw new TypeError('base58: not a string');
@@ -789,6 +809,141 @@ export function checkHandoff(handoff, { origin, card } = {}) {
     accepted.push(e.kind === 'ui' ? { entry: e, requiresPerson: true } : { entry: e });
   }
   return { accepted, refused };
+}
+
+// ================================================================ the knock (the card route, completed)
+
+const PKCS8_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
+const REPLY_WINDOW_S = 300;
+
+/**
+ * Load a signing key the caller ALREADY HOLDS: the muretai key file (`{"seed": <64 hex>, …}`)
+ * or a bare 64-hex Ed25519 seed. This function never mints — where a key comes from and
+ * where it lives is the caller's decision, and an agent that has none is told how to make
+ * one by the door itself (see `describeKnock(...).howTo`).
+ */
+export function loadKey(source) {
+  const text = String(source).trim();
+  let seedHex = null;
+  if (/^[0-9a-fA-F]{64}$/.test(text)) seedHex = text;
+  else {
+    try {
+      const j = JSON.parse(text);
+      if (typeof j?.seed === 'string' && /^[0-9a-fA-F]{64}$/.test(j.seed)) seedHex = j.seed;
+    } catch { /* not JSON */ }
+  }
+  if (!seedHex) throw new TypeError('key: expected a 64-hex Ed25519 seed, or JSON with a "seed" field');
+  const privateKey = createPrivateKey({ key: Buffer.concat([PKCS8_ED25519_PREFIX, Buffer.from(seedHex, 'hex')]), format: 'der', type: 'pkcs8' });
+  const pub = Buffer.from(createPublicKey(privateKey).export({ format: 'jwk' }).x, 'base64url');
+  return { did: didFromPublicKey(pub), sign: (data) => cryptoSign(null, data, privateKey) };
+}
+
+/** The six frozen signed fields, canonicalized — the same bytes every door verifies. */
+export function signingPayload(f) {
+  return canonicalJSON({ contextId: f.contextId ?? null, from: f.from, messageId: f.messageId, text: f.text, timestamp: f.timestamp, to: f.to });
+}
+
+/** Does `sig` verify under the key `from` encodes? `from` is never taken as a label:
+ *  with did:key the DID IS the key, so a valid signature by a different identity than the
+ *  one displayed is exactly what this refuses. Never throws. */
+export function verifyEnvelopeSignature(f) {
+  try {
+    if (!f || typeof f !== 'object' || !f.from || !f.sig || typeof f.to !== 'string') return false;
+    const sig = Buffer.from(String(f.sig), 'base64');
+    if (sig.length !== 64) return false;
+    return verifyEd25519(publicKeyFromDid(f.from), sig, Buffer.from(signingPayload(f), 'utf8'));
+  } catch {
+    return false;
+  }
+}
+
+/** One signed A2A `message/send` request, ready to POST. */
+export function buildKnock(key, { to, text, contextId = null, timestamp = null, messageId = null }) {
+  if (typeof text !== 'string' || !text) throw new TypeError('knock: text is required');
+  const from = key.did;
+  const ts = Number.isSafeInteger(timestamp) ? timestamp : Math.floor(Date.now() / 1000);
+  const id = messageId ?? randomUUID();
+  const sig = key.sign(Buffer.from(signingPayload({ contextId, from, messageId: id, text, timestamp: ts, to }), 'utf8')).toString('base64');
+  return {
+    jsonrpc: '2.0', id: randomUUID(), method: 'message/send',
+    params: { message: { kind: 'message', role: 'user', parts: [{ kind: 'text', text }], messageId: id, contextId, metadata: { timestamp: ts, from, to, sig } } },
+  };
+}
+
+/**
+ * Is this reply an authentic statement by the DOOR, addressed to ME, and fresh? Three
+ * questions, answered separately so a refusal says which one failed. `doorDid` is the DID
+ * the card named — never the reply's own `from`, which would let any signer pass.
+ */
+export function verifyReply(result, { doorDid, myDid, now = Math.floor(Date.now() / 1000) }) {
+  const out = { ok: false, reasons: [] };
+  if (!result || typeof result !== 'object') { out.reasons.push('no message in the reply'); return out; }
+  const meta = result.metadata && typeof result.metadata === 'object' ? result.metadata : {};
+  const text = Array.isArray(result.parts)
+    ? result.parts.filter((p) => p && p.kind === 'text' && typeof p.text === 'string').map((p) => p.text).join('')
+    : '';
+  if (meta.from !== doorDid) out.reasons.push(`signed by ${typeof meta.from === 'string' ? meta.from : 'nobody'}, not the DID the card names`);
+  if (meta.to !== myDid) out.reasons.push('not addressed to you');
+  if (!Number.isSafeInteger(meta.timestamp) || Math.abs(now - meta.timestamp) > REPLY_WINDOW_S) out.reasons.push(`timestamp outside the ${REPLY_WINDOW_S} s window`);
+  if (!verifyEnvelopeSignature({ contextId: result.contextId ?? null, from: meta.from, messageId: result.messageId, text, timestamp: meta.timestamp, to: meta.to, sig: meta.sig })) {
+    out.reasons.push('signature does not verify over the six fields');
+  }
+  out.ok = out.reasons.length === 0;
+  out.text = text;
+  out.messageId = typeof result.messageId === 'string' ? result.messageId : null;
+  out.contextId = result.contextId ?? null;
+  out.timestamp = Number.isSafeInteger(meta.timestamp) ? meta.timestamp : null;
+  return out;
+}
+
+/**
+ * Complete the card route: probe the origin, and if the door is a route, POST ONE signed
+ * message to it and verify the reply under the DID the card names. The only POST this
+ * module ever makes, and it happens only after every probe-time refusal has passed — a
+ * substituted card, an off-origin door, or a failed card signature means no knock at all.
+ * Returns `{sent:false, why}` in those cases; never throws for a door's refusal (that is
+ * an answer, and it teaches).
+ */
+export async function knock(origin, { key, text, contextId = null, timeoutMs, fetch: fetchImpl } = {}) {
+  if (!key || typeof key.sign !== 'function' || typeof key.did !== 'string') throw new TypeError('knock: a loaded key is required (see loadKey)');
+  const f = fetchImpl ?? globalThis.fetch;
+  const probed = await probe(origin, { timeoutMs, fetch: f });
+  const decision = route(probed.ways, { key: true });
+  const base = { origin: probed.origin, from: key.did, probe: probed };
+  if (!decision.routes.some((r) => r.kind === 'card')) {
+    return { ...base, sent: false, why: decision.excluded.find((x) => x.kind === 'card')?.why ?? 'the door is not a route here' };
+  }
+  const contract = describeKnock(probed.ways.card.card);
+  const endpoint = contract?.endpoint ?? probed.ways.card.url;
+  const to = contract?.recipient ?? probed.ways.card.did;
+  if (safeOrigin(endpoint) !== probed.origin) return { ...base, sent: false, why: 'the door\'s endpoint is not on the origin you dialled' };
+  if (to !== probed.ways.card.did) return { ...base, sent: false, why: 'the door\'s contract names a recipient other than the card\'s DID' };
+
+  const body = buildKnock(key, { to, text, contextId });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  let status = 0;
+  let doc = null;
+  try {
+    const res = await f(endpoint, {
+      method: 'POST', redirect: 'manual', signal: ctrl.signal,
+      headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': `agent-web-router/${VERSION}` },
+      body: JSON.stringify(body),
+    });
+    status = res.status;
+    doc = parseJSON(await res.text());
+  } catch (e) {
+    return { ...base, sent: true, door: { did: to, endpoint }, messageId: body.params.message.messageId, status, verified: false, error: { message: e?.name === 'AbortError' ? 'timeout' : String(e?.message || e) } };
+  } finally {
+    clearTimeout(timer);
+  }
+  const sent = { ...base, sent: true, door: { did: to, endpoint }, messageId: body.params.message.messageId, status };
+  if (!doc) return { ...sent, verified: false, error: { message: `the door answered ${status} with no JSON-RPC body` } };
+  if (doc.error && typeof doc.error === 'object') {
+    return { ...sent, verified: false, error: { code: doc.error.code ?? null, message: doc.error.message ?? '', ...(doc.error.data !== undefined ? { data: doc.error.data } : {}) }, ...(contract?.howTo ? { howTo: contract.howTo } : {}) };
+  }
+  const v = verifyReply(doc.result, { doorDid: to, myDid: key.did });
+  return { ...sent, verified: v.ok, reply: { text: v.text, messageId: v.messageId, contextId: v.contextId, timestamp: v.timestamp }, ...(v.ok ? {} : { refused: v.reasons }) };
 }
 
 // ================================================================ the door's contract

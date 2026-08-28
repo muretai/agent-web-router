@@ -15,7 +15,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { generateKeyPairSync, sign, verify, createPublicKey, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { writeFileSync, mkdtempSync } from 'node:fs';
@@ -40,7 +40,23 @@ function makeIdentity() {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   const raw = Buffer.from(publicKey.export({ format: 'jwk' }).x, 'base64url');
   const did = 'did:key:z' + b58encode(Buffer.concat([Buffer.from([0xed, 0x01]), raw]));
-  return { did, privateKey };
+  const seedHex = Buffer.from(privateKey.export({ format: 'jwk' }).d, 'base64url').toString('hex');
+  return { did, privateKey, seedHex };
+}
+// The fixture DOOR verifies a visitor's signature with its own independent decode.
+function b58decode(s) {
+  let n = 0n;
+  for (const ch of s) n = n * 58n + BigInt(B58.indexOf(ch));
+  let hex = n.toString(16); if (hex.length % 2) hex = '0' + hex;
+  return Buffer.from(hex, 'hex');
+}
+function publicKeyOf(did) {
+  const raw = b58decode(did.slice('did:key:z'.length));
+  return createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), raw.subarray(2)]), format: 'der', type: 'spki' });
+}
+function sixFields(msg) {
+  const meta = msg.metadata || {};
+  return canon({ contextId: msg.contextId ?? null, from: meta.from, messageId: msg.messageId, text: (msg.parts || []).map((p) => p.text).join(''), timestamp: meta.timestamp, to: meta.to });
 }
 // A deliberately independent canonicalizer (sorted keys, no whitespace, integers only).
 function canon(v) {
@@ -90,8 +106,32 @@ async function startSite(build) {
   let routes = {};
   let headers = {};
   let markdown = null;
+  let door = null;          // { replyKey, refuse } — a door that verifies and answers signed
+  const posts = [];
   const server = http.createServer((req, res) => {
     const path = req.url.split('?')[0];
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => {
+        posts.push({ path, body });
+        if (!door || path !== '/') { res.writeHead(404); res.end(); return; }
+        let rpc; try { rpc = JSON.parse(body); } catch { rpc = null; }
+        const msg = rpc?.params?.message;
+        const meta = msg?.metadata || {};
+        let ok = false;
+        try { ok = !door.refuse && verify(null, Buffer.from(sixFields(msg), 'utf8'), publicKeyOf(meta.from), Buffer.from(meta.sig, 'base64')); } catch { ok = false; }
+        res.writeHead(200, { 'content-type': 'application/json' });
+        if (!ok) { res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc?.id ?? null, error: { code: -32001, message: 'signature verification failed', data: { howTo: `${base}/how-to` } } })); return; }
+        const reply = { kind: 'message', role: 'agent', parts: [{ kind: 'text', text: `Hello, ${meta.from}. Ask away.` }], messageId: randomUUID(), contextId: msg.contextId ?? null };
+        const ts = Math.floor(Date.now() / 1000) - (door.stale ? 1000 : 0);
+        const signer = door.replyKey;
+        const payload = canon({ contextId: reply.contextId, from: signer.did, messageId: reply.messageId, text: reply.parts[0].text, timestamp: ts, to: meta.from });
+        reply.metadata = { timestamp: ts, from: door.claimDid ?? signer.did, to: meta.from, sig: sign(null, Buffer.from(payload, 'utf8'), signer.privateKey).toString('base64') };
+        res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result: reply }));
+      });
+      return;
+    }
     if (path === '/' && markdown && /text\/markdown/.test(req.headers.accept || '')) {
       res.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8', ...headers }); res.end(markdown); return;
     }
@@ -115,7 +155,15 @@ async function startSite(build) {
   if (parts.didConfig) routes['/.well-known/did-configuration.json'] = ['application/json', JSON.stringify(parts.didConfig)];
   if (parts.markdown) markdown = parts.markdown;
   if (parts.headers) headers = parts.headers;
-  return { base, id, close: () => new Promise((r) => server.close(r)) };
+  if (parts.door) door = { replyKey: id, ...parts.door };
+  return { base, id, posts, close: () => new Promise((r) => server.close(r)) };
+}
+
+function keyFile(id, form = 'json') {
+  const dir = mkdtempSync(join(tmpdir(), 'awr-key-'));
+  const p = join(dir, 'visitor.key');
+  writeFileSync(p, form === 'json' ? JSON.stringify({ name: 'visitor', seed: id.seedHex, did: id.did }) : id.seedHex + '\n', { mode: 0o600 });
+  return p;
 }
 
 async function cli(...argv) {
@@ -585,6 +633,115 @@ test('a malformed handoff is nothing to follow (fail closed)', async () => {
     const r = await cli('handoff', file, '--origin', site.base, '--json');
     assert.equal(r.code, 2);
     assert.equal(JSON.parse(r.stdout).handoff, null);
+  } finally { await site.close(); }
+});
+
+// ================================================================ the knock
+
+test('knock: one signed message at the door, one signed reply, verified under the DID the card names', async () => {
+  const visitor = makeIdentity();
+  const site = await startSite((base, id) => { const card = makeCard(base, id.did); return { card, sig: signedCard(card, id.privateKey), door: {} }; });
+  try {
+    const r = await cli('knock', site.base, '--key', keyFile(visitor), '--text', 'Do you have tables tonight?', '--json');
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.sent, true);
+    assert.equal(out.from, visitor.did);
+    assert.equal(out.door.did, site.id.did);
+    assert.equal(out.verified, true);
+    assert.match(out.reply.text, new RegExp(`Hello, ${visitor.did}`));
+    assert.equal(site.posts.length, 1, 'exactly one POST');
+    const sent = JSON.parse(site.posts[0].body);
+    assert.equal(sent.method, 'message/send');
+    assert.equal(sent.params.message.metadata.to, site.id.did);
+    assert.equal(sent.params.message.contextId, null);
+    assert.deepEqual(sent.params.message.parts, [{ kind: 'text', text: 'Do you have tables tonight?' }]);
+  } finally { await site.close(); }
+});
+
+test('knock: a bare 64-hex seed and the muretai key file name the same DID', async () => {
+  const visitor = makeIdentity();
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), door: {} }));
+  try {
+    const a = JSON.parse((await cli('knock', site.base, '--key', keyFile(visitor, 'json'), '--json')).stdout);
+    const b = JSON.parse((await cli('knock', site.base, '--key', keyFile(visitor, 'hex'), '--json')).stdout);
+    assert.equal(a.from, visitor.did);
+    assert.equal(b.from, visitor.did);
+  } finally { await site.close(); }
+});
+
+test('knock without a key sends nothing and prints the door\'s own how-to', async () => {
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), door: {} }));
+  try {
+    const r = await cli('knock', site.base, '--json');
+    assert.equal(r.code, 2);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.sent, false);
+    assert.equal(out.knock.howTo, `${site.base}/agent-entry/how-to`);
+    assert.equal(site.posts.length, 0);
+  } finally { await site.close(); }
+});
+
+test('ATTACK: a reply signed by another key is refused even though it claims the door\'s DID', async () => {
+  const visitor = makeIdentity();
+  const impostor = makeIdentity();
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), door: { replyKey: impostor, claimDid: id.did } }));
+  try {
+    const r = await cli('knock', site.base, '--key', keyFile(visitor), '--json');
+    assert.equal(r.code, 2);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.sent, true);
+    assert.equal(out.verified, false);
+    assert.ok(out.refused.some((x) => /signature does not verify/.test(x)), out.refused.join('; '));
+  } finally { await site.close(); }
+});
+
+test('ATTACK: a reply signed by another key under its OWN DID is refused: not the DID the card names', async () => {
+  const visitor = makeIdentity();
+  const impostor = makeIdentity();
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), door: { replyKey: impostor } }));
+  try {
+    const out = JSON.parse((await cli('knock', site.base, '--key', keyFile(visitor), '--json')).stdout);
+    assert.equal(out.verified, false);
+    assert.ok(out.refused.some((x) => /not the DID the card names/.test(x)), out.refused.join('; '));
+  } finally { await site.close(); }
+});
+
+test('ATTACK: a stale reply (outside the 300 s window) is refused', async () => {
+  const visitor = makeIdentity();
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), door: { stale: true } }));
+  try {
+    const out = JSON.parse((await cli('knock', site.base, '--key', keyFile(visitor), '--json')).stdout);
+    assert.equal(out.verified, false);
+    assert.ok(out.refused.some((x) => /window/.test(x)));
+  } finally { await site.close(); }
+});
+
+test('ATTACK: a substituted card means no knock at all — nothing is POSTed', async () => {
+  const visitor = makeIdentity();
+  const other = makeIdentity();
+  const site = await startSite((base, id) => { const card = makeCard(base, id.did); return { card, sig: signedCard(card, other.privateKey), door: {} }; });
+  try {
+    const r = await cli('knock', site.base, '--key', keyFile(visitor), '--json');
+    assert.equal(r.code, 2);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.sent, false);
+    assert.match(out.why, /refused/);
+    assert.equal(site.posts.length, 0);
+  } finally { await site.close(); }
+});
+
+test('the door\'s refusal is an answer, not a crash: its code, message and how-to are shown', async () => {
+  const visitor = makeIdentity();
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), door: { refuse: true } }));
+  try {
+    const r = await cli('knock', site.base, '--key', keyFile(visitor), '--json');
+    assert.equal(r.code, 2);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.sent, true);
+    assert.equal(out.verified, false);
+    assert.equal(out.error.code, -32001);
+    assert.equal(out.error.data.howTo, `${site.base}/how-to`);
   } finally { await site.close(); }
 });
 

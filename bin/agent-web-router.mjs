@@ -13,7 +13,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { probe, route, parseHandoff, checkHandoff, describeKnock, VERSION } from '../agent-web-router.mjs';
+import { probe, route, parseHandoff, checkHandoff, describeKnock, loadKey, knock, VERSION } from '../agent-web-router.mjs';
 
 function usage(code = 1) {
   process.stderr.write([
@@ -21,6 +21,7 @@ function usage(code = 1) {
     '',
     'usage:',
     '  agent-web-router probe <url> [--person] [--browser] [--token] [--no-key] [--json] [--timeout <ms>]',
+    '  agent-web-router knock <url> --key <file> [--text <message>] [--json] [--timeout <ms>]',
     '  agent-web-router handoff <file|-> --origin <url> [--json] [--timeout <ms>]',
     '',
     'on hand (probe):',
@@ -28,6 +29,10 @@ function usage(code = 1) {
     '  --browser   you can run a browser yourself (headless)',
     '  --token     you hold a credential for the site\'s MCP server',
     '  --no-key    you hold no signing key yet (default: you do)',
+    '',
+    'knock: POST one signed message at the door and verify the signed reply.',
+    '  --key <file>   a key you already hold: a muretai key file ({"seed": …}) or a 64-hex seed.',
+    '                 Nothing here mints a key; without one, the door\'s own how-to is printed.',
     '',
   ].join('\n'));
   process.exit(code);
@@ -37,7 +42,7 @@ function parseArgs(argv) {
   const out = { _: [], flags: {} };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--timeout' || a === '--origin') { out.flags[a.slice(2)] = argv[++i]; continue; }
+    if (a === '--timeout' || a === '--origin' || a === '--key' || a === '--text') { out.flags[a.slice(2)] = argv[++i]; continue; }
     if (a.startsWith('--')) { out.flags[a.slice(2)] = true; continue; }
     out._.push(a);
   }
@@ -174,8 +179,59 @@ async function cmdHandoff(args) {
   process.exit(handoff && out.refused.length === 0 ? 0 : 2);
 }
 
+async function cmdKnock(args) {
+  const url = args._[1];
+  if (!url) usage();
+  const timeoutMs = args.flags.timeout ? Number(args.flags.timeout) : undefined;
+  const text = typeof args.flags.text === 'string' && args.flags.text ? args.flags.text : 'Hello. What can I ask you here?';
+  if (!args.flags.key) {
+    // No key: do not knock. Show the door's own contract — it teaches how to mint one.
+    let probed;
+    try { probed = await probe(url, { timeoutMs }); } catch (e) { process.stderr.write(`agent-web-router: ${e.message}\n`); process.exit(1); }
+    const contract = probed.ways.card.found ? describeKnock(probed.ways.card.card) : null;
+    if (args.flags.json) process.stdout.write(JSON.stringify({ origin: probed.origin, sent: false, why: 'no key on hand (--key <file>)', knock: contract }, null, 2) + '\n');
+    else {
+      process.stdout.write(`agent-web-router ${VERSION} · knock ${probed.origin}\n\nno key on hand: nothing was sent. The door's own contract:\n`);
+      process.stdout.write(contract ? `  POST ${contract.endpoint ?? '?'}  to ${contract.recipient ?? '?'}${contract.signedFields ? `  sign ${contract.signedFields.join(',')}` : ''}\n${contract.howTo ? `  how-to: ${contract.howTo}\n` : ''}${contract.instruction ? `  ${contract.instruction.slice(0, 200)}…\n` : ''}` : '  (no door found here)\n');
+    }
+    process.exit(2);
+  }
+  let key;
+  try { key = loadKey(readFileSync(args.flags.key, 'utf8')); } catch (e) {
+    process.stderr.write(`agent-web-router: cannot load key from ${args.flags.key}: ${e.message}\n`);
+    process.exit(1);
+  }
+  let result;
+  try { result = await knock(url, { key, text, timeoutMs }); } catch (e) {
+    process.stderr.write(`agent-web-router: ${e.message}\n`);
+    process.exit(1);
+  }
+  const { probe: _p, ...printable } = result;   // the full probe rides only in --json
+  if (args.flags.json) {
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  } else {
+    const lines = [`agent-web-router ${VERSION} · knock ${result.origin}`, '', `from  ${result.from}`];
+    if (!result.sent) lines.push(`not sent: ${result.why}`);
+    else {
+      lines.push(`door  ${result.door.did}`, `POST  ${result.door.endpoint}  -> ${result.status}`);
+      if (result.error) {
+        lines.push(`refused by the door: ${result.error.code ?? ''} ${result.error.message ?? ''}`.trim());
+        if (result.howTo) lines.push(`how-to: ${result.howTo}`);
+      } else {
+        lines.push(`reply ${result.verified ? 'verified' : 'NOT verified'}: signed by the card's DID, addressed to you, within 300 s`);
+        if (result.refused) for (const r of result.refused) lines.push(`  - ${r}`);
+        lines.push('', result.reply.text);
+      }
+    }
+    void printable;
+    process.stdout.write(lines.join('\n') + '\n');
+  }
+  process.exit(result.sent && result.verified ? 0 : 2);
+}
+
 const args = parseArgs(process.argv.slice(2));
 if (args.flags.help || args.flags.h || args._.length === 0) usage(args._.length === 0 && !args.flags.help ? 1 : 0);
 if (args._[0] === 'probe') await cmdProbe(args);
+else if (args._[0] === 'knock') await cmdKnock(args);
 else if (args._[0] === 'handoff') await cmdHandoff(args);
 else usage();
