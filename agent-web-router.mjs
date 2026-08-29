@@ -36,12 +36,29 @@
  * way in, is the harness's own browser's to run. describeKnock(card) still returns the door's
  * contract for a harness that prefers to knock with its own code.
  *
+ * Three rules of CONDUCT run through all four (spec §7b), and each is pinned by a test that
+ * attempts the opposite:
+ *
+ *   identity comes from the caller   the visitor's DID is derived from the key the caller
+ *                                    supplied — never from a field the site put in its card,
+ *                                    its page, a tool result or a handoff (AWR-25)
+ *   tool results are data            the ONLY thing consumed from a tool result is the handoff
+ *                                    envelope at `_meta.handoff`; prose in `content`, anything
+ *                                    in `structuredContent`, cannot create or re-order a route
+ *                                    (AWR-26)
+ *   a refusal is final for the call  one POST per knock(); a 429, a 503 or a JSON-RPC error
+ *                                    is returned with its Retry-After, never retried (AWR-27)
+ *
+ * Why these are here and not left to the model: a paper that measured it (arXiv 2606.06460)
+ * found agents honour an in-band "stop" 0–100 % depending on the model, and a harness-level
+ * interceptor 120/120. The router IS that interceptor for the three cases above.
+ *
  * Zero dependencies. Node >= 20 (global fetch, node:crypto Ed25519).
  */
 
 import { createPrivateKey, createPublicKey, randomUUID, sign as cryptoSign, verify as cryptoVerify } from 'node:crypto';
 
-export const VERSION = '0.3.0';
+export const VERSION = '0.4.0';
 
 export const AGENT_CARD_PATH = '/.well-known/agent-card.json';
 export const AGENT_CARD_PATH_LEGACY = '/.well-known/agent.json';
@@ -737,6 +754,17 @@ export function route(ways, onHand = {}) {
  * envelope is read as a single `dm` entry. Fail closed: anything malformed is dropped,
  * never acted on.
  */
+/**
+ * The ONLY thing this module consumes from a tool result is the handoff envelope, and only
+ * at `_meta.handoff` (or top-level `handoff`; legacy `muretai`). Everything else in the
+ * result — the prose in `content[]`, a `structuredContent` object, any other key — is data
+ * the tool returned, never an instruction to the router (AWR-26). A handoff written out in
+ * a text part, or placed under `structuredContent`, is therefore not a handoff: a page's
+ * script or a peer's message can put anything in those, and "follow what the text says" is
+ * exactly the move an injected instruction is written to trigger. Nothing in a tool result
+ * names the visitor's own identity either — `from`, `as`, `agent_name` and the like are
+ * dropped on the floor (AWR-25).
+ */
 export function parseHandoff(result) {
   if (!result || typeof result !== 'object') return null;
   const h = result._meta?.handoff ?? result.handoff;
@@ -811,6 +839,20 @@ export function checkHandoff(handoff, { origin, card } = {}) {
   return { accepted, refused };
 }
 
+/**
+ * RFC 9110 §10.2.3: `Retry-After` is either delay-seconds or an HTTP-date. Returns whole
+ * seconds ≥ 0, or null when absent or unparseable. Surfaced, never acted on: the router
+ * makes one POST per knock() and hands the door's own timing back to the caller (AWR-27).
+ */
+function retryAfterSeconds(value, now = Date.now()) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  if (/^\d+$/.test(s)) return Number(s);
+  const t = Date.parse(s);
+  if (Number.isNaN(t)) return null;
+  return Math.max(0, Math.ceil((t - now) / 1000));
+}
+
 // ================================================================ the knock (the card route, completed)
 
 const PKCS8_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
@@ -857,7 +899,10 @@ export function verifyEnvelopeSignature(f) {
   }
 }
 
-/** One signed A2A `message/send` request, ready to POST. */
+/** One signed A2A `message/send` request, ready to POST. `from` is derived from the key
+ *  the caller supplied and from nothing else: a `from`, `agent_name` or `as` that a site
+ *  writes into its card, its contract or a handoff is never read here (AWR-25) — with
+ *  did:key the identity IS the key, so the site cannot hand the visitor one. */
 export function buildKnock(key, { to, text, contextId = null, timestamp = null, messageId = null }) {
   if (typeof text !== 'string' || !text) throw new TypeError('knock: text is required');
   const from = key.did;
@@ -903,6 +948,12 @@ export function verifyReply(result, { doorDid, myDid, now = Math.floor(Date.now(
  * substituted card, an off-origin door, or a failed card signature means no knock at all.
  * Returns `{sent:false, why}` in those cases; never throws for a door's refusal (that is
  * an answer, and it teaches).
+ *
+ * A REFUSAL IS FINAL FOR THE CALL (AWR-27). Exactly one POST is made, whatever comes back:
+ * a 429 or 503 is returned with its `Retry-After` as `retryAfter` (seconds), a JSON-RPC
+ * error is returned as `error`, and neither is retried here — re-sending the same signed
+ * message is a replay by construction, and re-sending a fresh one inside the window is what
+ * the door just asked the caller not to do. The caller decides whether to come back later.
  */
 export async function knock(origin, { key, text, contextId = null, timeoutMs, fetch: fetchImpl } = {}) {
   if (!key || typeof key.sign !== 'function' || typeof key.did !== 'string') throw new TypeError('knock: a loaded key is required (see loadKey)');
@@ -924,6 +975,7 @@ export async function knock(origin, { key, text, contextId = null, timeoutMs, fe
   const timer = setTimeout(() => ctrl.abort(), timeoutMs ?? DEFAULT_TIMEOUT_MS);
   let status = 0;
   let doc = null;
+  let retryAfter = null;
   try {
     const res = await f(endpoint, {
       method: 'POST', redirect: 'manual', signal: ctrl.signal,
@@ -931,13 +983,14 @@ export async function knock(origin, { key, text, contextId = null, timeoutMs, fe
       body: JSON.stringify(body),
     });
     status = res.status;
+    retryAfter = retryAfterSeconds(typeof res.headers?.get === 'function' ? res.headers.get('retry-after') : null);
     doc = parseJSON(await res.text());
   } catch (e) {
     return { ...base, sent: true, door: { did: to, endpoint }, messageId: body.params.message.messageId, status, verified: false, error: { message: e?.name === 'AbortError' ? 'timeout' : String(e?.message || e) } };
   } finally {
     clearTimeout(timer);
   }
-  const sent = { ...base, sent: true, door: { did: to, endpoint }, messageId: body.params.message.messageId, status };
+  const sent = { ...base, sent: true, door: { did: to, endpoint }, messageId: body.params.message.messageId, status, ...(retryAfter !== null ? { retryAfter } : {}) };
   if (!doc) return { ...sent, verified: false, error: { message: `the door answered ${status} with no JSON-RPC body` } };
   if (doc.error && typeof doc.error === 'object') {
     return { ...sent, verified: false, error: { code: doc.error.code ?? null, message: doc.error.message ?? '', ...(doc.error.data !== undefined ? { data: doc.error.data } : {}) }, ...(contract?.howTo ? { howTo: contract.howTo } : {}) };

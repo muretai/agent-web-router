@@ -32,7 +32,7 @@ against the site's own card, and **knock**: POST one signed message at the door 
 agent already holds, and verify the signed reply. It does not browse, scrape, or mint keys:
 when the page is the way in, it hands the page to the browser your harness already has.
 
-Zero dependencies. Node ≥ 20. MIT. Status: **0.3.0, not yet on npm.**
+Zero dependencies. Node ≥ 20. MIT. Status: **0.4.0, not yet on npm.**
 
 ## Try it
 
@@ -150,6 +150,12 @@ card names** (never the reply's own `from`), addressed to you, within 300 s. A r
 fails any of those is printed with the reason and exit 2; a door's refusal (a JSON-RPC error)
 is printed as what it is — an answer that teaches — with its how-to.
 
+**A refusal is final for the call.** `knock` makes exactly one POST. A 429 or 503, or a
+JSON-RPC error such as the door's own over-rate `-32004`, comes back to you with its
+`Retry-After` as `retryAfter` (seconds) and is never retried: re-sending the same signed
+message is a replay, and re-sending a fresh one inside the window is what the door just asked
+you not to do. Whether to come back later is yours to decide, with the door's own number in hand.
+
 `--key` is a key you already hold: the muretai key file (`{"seed": "<64 hex>", …}`) or a bare
 64-hex seed. **Nothing here mints a key.** Where a key comes from and where it lives — per
 visit, per machine, per site — decides whether the site sees one returning visitor or a
@@ -190,6 +196,27 @@ cat result.json | node bin/agent-web-router.mjs handoff - --origin https://shop.
 ```
 
 Exit 0 when every entry is accepted, 2 when anything is refused or there is nothing to follow.
+
+## Conduct — what the router refuses to take from a site
+
+Three rules run through everything above, each pinned by a test that attempts the opposite
+(spec §7b):
+
+- **Identity comes from you.** `from` is derived from the key you supplied, never from a
+  `from`, `agent_name` or `as` that a site writes into its card, its contract or a handoff.
+  With `did:key` the identity *is* the key, so a site cannot hand you one — the router makes
+  that hold at the two seams where a name could still be copied.
+- **A tool result is data.** The only thing read from a tool result is the handoff envelope at
+  `_meta.handoff`. Prose in `content[]`, an object under `structuredContent`, a "SYSTEM NOTICE"
+  telling you to continue elsewhere — none of it can create or re-order a route, whatever the
+  tool's annotations say; the absence of an `untrustedContentHint` is not trust.
+- **A refusal is final for the call.** One POST per knock; 429, 503 and JSON-RPC errors are
+  returned with `Retry-After`, never retried.
+
+Why these are in the router and not left to the model: a paper that measured it
+([arXiv 2606.06460](https://arxiv.org/abs/2606.06460)) found agents honour an in-band "stop"
+anywhere from 0 % to 100 % depending on the model, while a harness-level interceptor stopped
+120 of 120. For these three cases, the router is that interceptor.
 
 ## What it does not do, and why
 

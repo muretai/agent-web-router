@@ -30,7 +30,8 @@ function usage(code = 1) {
     '  --token     you hold a credential for the site\'s MCP server',
     '  --no-key    you hold no signing key yet (default: you do)',
     '',
-    'knock: POST one signed message at the door and verify the signed reply.',
+    'knock: POST one signed message at the door and verify the signed reply. One POST, never a retry:',
+    '       a 429/503 or a JSON-RPC error is printed with its Retry-After and exit 2.',
     '  --key <file>   a key you already hold: a muretai key file ({"seed": …}) or a 64-hex seed.',
     '                 Nothing here mints a key; without one, the door\'s own how-to is printed.',
     '',
@@ -216,6 +217,7 @@ async function cmdKnock(args) {
       lines.push(`door  ${result.door.did}`, `POST  ${result.door.endpoint}  -> ${result.status}`);
       if (result.error) {
         lines.push(`refused by the door: ${result.error.code ?? ''} ${result.error.message ?? ''}`.trim());
+        if (result.retryAfter != null) lines.push(`retry-after: ${result.retryAfter} s — the door's timing; nothing was re-sent`);
         if (result.howTo) lines.push(`how-to: ${result.howTo}`);
       } else {
         lines.push(`reply ${result.verified ? 'verified' : 'NOT verified'}: signed by the card's DID, addressed to you, within 300 s`);
