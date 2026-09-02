@@ -21,7 +21,7 @@ hold do the visiting.
 
 ```
 npx @muretai/agent-web-router probe <url> [--person] [--browser] [--token] [--no-key] [--json]
-npx @muretai/agent-web-router knock <url> --key <file> [--text <message>] [--json]
+npx @muretai/agent-web-router knock <url> --key <file> [--text <message>] [--context <id>] [--json]
 npx @muretai/agent-web-router handoff <result.json> --origin <url>
 ```
 
@@ -53,7 +53,9 @@ to *discover* — only to *use* the page, and only when a person or you can hold
    A failed signature is what a substituted card looks like; it is never "unsigned". If it
    does not exist, you may knock; the door's signed reply is what proves the key.
 4. **Look for a server.** `GET /.well-known/mcp.json`. A server is a route only if you hold
-   a token for it, or the card says it needs none.
+   a token for it, or the card says it needs none — and only if its endpoint is on the origin
+   you dialled: a server card, like a card, binds only its own origin, and an endpoint
+   elsewhere is not this site's server.
 5. **Look at the page.** `GET /` as HTML (and once with `Accept: text/markdown` — a site
    may hand you a Markdown edition, which is the cheaper way to READ it). `<form>` elements with both `toolname` and
    `tooldescription` are declared tools (VOIX `<tool name description>` elements too).
@@ -73,7 +75,8 @@ to *discover* — only to *use* the page, and only when a person or you can hold
    to the endpoint the card names, on the origin you dialled. Verify the reply before you
    trust it: `metadata.from` equals the card's `did`, `metadata.to` is you, the timestamp is
    within 300 s, and the signature verifies over the reply's own six fields. A refusal is an
-   answer — read it; it teaches.
+   answer — read it; it teaches. To continue the conversation, send the reply's `contextId`
+   back as your next knock's `contextId` — it is one of the six signed fields.
 8. **Follow a handoff only where the card points.** A tool result may carry
    `_meta.handoff.next[]` (or a legacy `muretai` key). For each entry: a `to` must equal the
    card's `did`; a URL must be on the origin you dialled or on the origin the card's `url`

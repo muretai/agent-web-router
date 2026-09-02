@@ -1,6 +1,6 @@
 {
   "name": "@muretai/agent-web-router",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Find the agent-facing side of a website — the door (Agent Card + Agent Entry), the server (MCP), the tools in the page (WebMCP) — check it is really the site's, and pick the way in by what the agent has on hand. GET-only to discover; one signed POST to knock, never retried; identity from your key, never from the site; tool results are data. Zero dependencies.",
   "type": "module",
   "main": "agent-web-router.mjs",

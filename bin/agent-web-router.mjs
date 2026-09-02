@@ -2,8 +2,8 @@
 /**
  * agent-web-router — the command line.
  *
- *   agent-web-router probe <url> [--person] [--browser] [--token] [--no-key] [--json] [--timeout <ms>]
- *   agent-web-router handoff <file|-> --origin <url> [--json] [--timeout <ms>]
+ *   agent-web-router probe <url> [--person] [--browser] [--token] [--no-key] [--json] [--timeout <ms>] [--deadline <ms>]
+ *   agent-web-router handoff <file|-> --origin <url> [--json] [--timeout <ms>] [--deadline <ms>]
  *
  * `probe` reads what a site offers and prints the route for what you have on hand.
  * `handoff` checks a tool result (a JSON file, or stdin) against the site's own card.
@@ -20,9 +20,9 @@ function usage(code = 1) {
     `agent-web-router ${VERSION}`,
     '',
     'usage:',
-    '  agent-web-router probe <url> [--person] [--browser] [--token] [--no-key] [--json] [--timeout <ms>]',
-    '  agent-web-router knock <url> --key <file> [--text <message>] [--json] [--timeout <ms>]',
-    '  agent-web-router handoff <file|-> --origin <url> [--json] [--timeout <ms>]',
+    '  agent-web-router probe <url> [--person] [--browser] [--token] [--no-key] [--json] [--timeout <ms>] [--deadline <ms>]',
+    '  agent-web-router knock <url> --key <file> [--text <message>] [--context <id>] [--json] [--timeout <ms>] [--deadline <ms>]',
+    '  agent-web-router handoff <file|-> --origin <url> [--json] [--timeout <ms>] [--deadline <ms>]',
     '',
     'on hand (probe):',
     '  --person    a person is in the tab; the page is theirs',
@@ -34,6 +34,8 @@ function usage(code = 1) {
     '       a 429/503 or a JSON-RPC error is printed with its Retry-After and exit 2.',
     '  --key <file>   a key you already hold: a muretai key file ({"seed": …}) or a 64-hex seed.',
     '                 Nothing here mints a key; without one, the door\'s own how-to is printed.',
+    '  --context <id> continue a conversation: the contextId a previous reply carried,',
+    '                 signed as one of the six fields.',
     '',
   ].join('\n'));
   process.exit(code);
@@ -43,7 +45,7 @@ function parseArgs(argv) {
   const out = { _: [], flags: {} };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--timeout' || a === '--origin' || a === '--key' || a === '--text') { out.flags[a.slice(2)] = argv[++i]; continue; }
+    if (a === '--timeout' || a === '--deadline' || a === '--origin' || a === '--key' || a === '--text' || a === '--context') { out.flags[a.slice(2)] = argv[++i]; continue; }
     if (a.startsWith('--')) { out.flags[a.slice(2)] = true; continue; }
     out._.push(a);
   }
@@ -67,12 +69,12 @@ function printProbe(result, decision, knock) {
     if (card.interfaces.length > 1) extra.push(`interfaces: ${card.interfaces.map((i) => i.transport ?? '?').join(', ')}`);
     if (card.extensions.length) extra.push(`extensions: ${card.extensions.length}`);
     if (card.domains.length) extra.push(`domains: ${card.domains.join(', ')}`);
-    if (card.domainBinding.found) extra.push(`did-configuration: ${card.domainBinding.namesCardDid ? 'names this did (not verified here)' : 'does NOT name this did'}`);
+    if (card.domainBinding.found) extra.push(`did-configuration: ${card.domainBinding.verified ? 'proves this did for this origin' : card.domainBinding.namesCardDid ? 'names this did but the proof does NOT verify' : 'does NOT name this did'}`);
     if (extra.length) lines.push(`         ${extra.join('  ')}`);
   } else {
     lines.push(`  ${pad('card', 6)} none (${card.status ?? 'unreachable'})`);
   }
-  lines.push(`  ${pad('mcp', 6)} ${mcp.declared ? `declared at ${mcp.url ?? '(no endpoint)'}${mcp.openAccess ? ', no credential needed' : ''}` : `not declared (${mcp.status ?? 'unreachable'})`}`);
+  lines.push(`  ${pad('mcp', 6)} ${mcp.declared ? `declared at ${mcp.url ?? '(no endpoint)'}${mcp.url && !mcp.originBound ? '  (NOT this origin)' : ''}${mcp.openAccess ? ', no credential needed' : ''}` : `not declared (${mcp.status ?? 'unreachable'})`}`);
   if (page.reachable) {
     const names = page.declarativeTools.map((t) => t.name).join(', ');
     lines.push(`  ${pad('page', 6)} ${page.declarativeTools.length} declarative tool(s)${names ? ` (${names})` : ''}; imperative hint: ${page.imperativeHint ?? 'none'}`);
@@ -123,9 +125,10 @@ async function cmdProbe(args) {
   const url = args._[1];
   if (!url) usage();
   const timeoutMs = args.flags.timeout ? Number(args.flags.timeout) : undefined;
+  const deadlineMs = args.flags.deadline ? Number(args.flags.deadline) : undefined;
   let result;
   try {
-    result = await probe(url, { timeoutMs });
+    result = await probe(url, { timeoutMs, deadlineMs });
   } catch (e) {
     process.stderr.write(`agent-web-router: ${e.message}\n`);
     process.exit(1);
@@ -155,9 +158,10 @@ async function cmdHandoff(args) {
   }
   const handoff = parseHandoff(doc);
   const timeoutMs = args.flags.timeout ? Number(args.flags.timeout) : undefined;
+  const deadlineMs = args.flags.deadline ? Number(args.flags.deadline) : undefined;
   let probed;
   try {
-    probed = await probe(origin, { timeoutMs });
+    probed = await probe(origin, { timeoutMs, deadlineMs });
   } catch (e) {
     process.stderr.write(`agent-web-router: ${e.message}\n`);
     process.exit(1);
@@ -184,11 +188,12 @@ async function cmdKnock(args) {
   const url = args._[1];
   if (!url) usage();
   const timeoutMs = args.flags.timeout ? Number(args.flags.timeout) : undefined;
+  const deadlineMs = args.flags.deadline ? Number(args.flags.deadline) : undefined;
   const text = typeof args.flags.text === 'string' && args.flags.text ? args.flags.text : 'Hello. What can I ask you here?';
   if (!args.flags.key) {
     // No key: do not knock. Show the door's own contract — it teaches how to mint one.
     let probed;
-    try { probed = await probe(url, { timeoutMs }); } catch (e) { process.stderr.write(`agent-web-router: ${e.message}\n`); process.exit(1); }
+    try { probed = await probe(url, { timeoutMs, deadlineMs }); } catch (e) { process.stderr.write(`agent-web-router: ${e.message}\n`); process.exit(1); }
     const contract = probed.ways.card.found ? describeKnock(probed.ways.card.card) : null;
     if (args.flags.json) process.stdout.write(JSON.stringify({ origin: probed.origin, sent: false, why: 'no key on hand (--key <file>)', knock: contract }, null, 2) + '\n');
     else {
@@ -202,8 +207,9 @@ async function cmdKnock(args) {
     process.stderr.write(`agent-web-router: cannot load key from ${args.flags.key}: ${e.message}\n`);
     process.exit(1);
   }
+  const contextId = typeof args.flags.context === 'string' && args.flags.context ? args.flags.context : null;
   let result;
-  try { result = await knock(url, { key, text, timeoutMs }); } catch (e) {
+  try { result = await knock(url, { key, text, contextId, timeoutMs, deadlineMs }); } catch (e) {
     process.stderr.write(`agent-web-router: ${e.message}\n`);
     process.exit(1);
   }
@@ -222,6 +228,7 @@ async function cmdKnock(args) {
       } else {
         lines.push(`reply ${result.verified ? 'verified' : 'NOT verified'}: signed by the card's DID, addressed to you, within 300 s`);
         if (result.refused) for (const r of result.refused) lines.push(`  - ${r}`);
+        lines.push(`context ${result.reply.contextId ?? '(none)'} — pass --context to continue this conversation`);
         lines.push('', result.reply.text);
       }
     }

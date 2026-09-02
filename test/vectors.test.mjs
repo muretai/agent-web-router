@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { canonicalJSON, signingPayload, didFromPublicKey, loadKey, verifyEnvelopeSignature } from '../agent-web-router.mjs';
+import { canonicalJSON, signingPayload, didFromPublicKey, loadKey, verifyEnvelopeSignature, verifyDomainLinkage } from '../agent-web-router.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const V = JSON.parse(readFileSync(join(HERE, 'agent-entry-vectors.json'), 'utf8'));
@@ -72,4 +72,39 @@ test('every envelope a door must reject is refused here too — and the wrong-re
     }
     assert.equal(verifyEnvelopeSignature(input), false, `${r.name} must be refused`);
   }
+});
+
+test('the Domain Linkage credential verifies byte-for-byte against the vectors', () => {
+  // The vectors' exp (2025-11-09) is deliberately in the past by now, which is exactly why
+  // the verifier takes an injected `now`: a verifier reading the wall clock could never
+  // check these bytes again. `signingInput` is the token's first two segments AS TEXT.
+  for (const c of V.domainLinkage) {
+    assert.equal(c.token.split('.').slice(0, 2).join('.'), c.signingInput, c.name);
+    const v = verifyDomainLinkage(c.token, { did: c.did, origin: `https://${c.domain}`, now: c.nbf + 60 });
+    assert.deepEqual(v, { ok: true, reasons: [] }, `${c.name}: ${v.reasons}`);
+  }
+});
+
+test('a Domain Linkage credential is refused for the right reason: wrong origin, expiry, padding, another did, tampering', () => {
+  const c = V.domainLinkage[0];
+  const at = c.nbf + 60;
+  const origin = `https://${c.domain}`;
+
+  let v = verifyDomainLinkage(c.token, { did: c.did, origin: 'https://other.example', now: at });
+  assert.ok(!v.ok && v.reasons.some((r) => /origin/.test(r)), `wrong origin: ${v.reasons}`);
+
+  v = verifyDomainLinkage(c.token, { did: c.did, origin, now: c.exp + 1 });
+  assert.ok(!v.ok && v.reasons.includes('expired'), `expiry: ${v.reasons}`);
+
+  v = verifyDomainLinkage(c.token + '=', { did: c.did, origin, now: at });
+  assert.ok(!v.ok && v.reasons.some((r) => /base64url/.test(r)), `padding is refused, not repaired: ${v.reasons}`);
+
+  v = verifyDomainLinkage(c.token, { did: V.webBotAuth.did, origin, now: at });
+  assert.ok(!v.ok && v.reasons.some((r) => /must all be the card's did/.test(r)), `another did: ${v.reasons}`);
+
+  const [h, p, s] = c.token.split('.');
+  const decoded = JSON.parse(Buffer.from(p, 'base64url').toString('utf8'));
+  const tampered = Buffer.from(JSON.stringify({ ...decoded, nbf: decoded.nbf - 1 })).toString('base64url');
+  v = verifyDomainLinkage(`${h}.${tampered}.${s}`, { did: c.did, origin, now: at });
+  assert.ok(!v.ok && v.reasons.some((r) => /signature/.test(r)), `tampering: ${v.reasons}`);
 });

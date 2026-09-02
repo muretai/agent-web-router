@@ -58,7 +58,7 @@
 
 import { createPrivateKey, createPublicKey, randomUUID, sign as cryptoSign, verify as cryptoVerify } from 'node:crypto';
 
-export const VERSION = '0.4.0';
+export const VERSION = '0.5.0';
 
 export const AGENT_CARD_PATH = '/.well-known/agent-card.json';
 export const AGENT_CARD_PATH_LEGACY = '/.well-known/agent.json';
@@ -83,6 +83,7 @@ const CARD_ENVELOPE_VERSION = 1;
 const MAX_CARD_BYTES = 256 * 1024;
 const MAX_HTML_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 8000;
+const DEFAULT_PROBE_DEADLINE_MS = 30000;
 
 // ================================================================ canonical JSON (safe subset)
 
@@ -203,7 +204,10 @@ function isHttpUrl(u) {
   try { const p = new URL(u).protocol; return p === 'https:' || p === 'http:'; } catch { return false; }
 }
 
-/** One capped GET. Never throws: a network failure is a finding, not an exception. */
+/** One capped GET. Never throws: a network failure is a finding, not an exception.
+ *  The cap is enforced WHILE reading, not after: a body is abandoned (and the request
+ *  aborted) the moment it crosses `maxBytes`, so an endless or hostile stream costs at
+ *  most the cap in memory and never holds the probe until its timeout. */
 async function getCapped(url, { fetchImpl, timeoutMs, maxBytes, accept }) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -214,9 +218,28 @@ async function getCapped(url, { fetchImpl, timeoutMs, maxBytes, accept }) {
       signal: ctrl.signal,
       headers: { accept, 'user-agent': `agent-web-router/${VERSION}` },
     });
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > maxBytes) {
-      return { ok: false, status: res.status, url: res.url, error: `body over ${maxBytes} bytes` };
+    let buf;
+    if (res.body?.getReader) {
+      const reader = res.body.getReader();
+      const chunks = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > maxBytes) {
+          try { ctrl.abort(); } catch { /* already down */ }
+          return { ok: false, status: res.status, url: res.url, error: `body over ${maxBytes} bytes` };
+        }
+        chunks.push(Buffer.from(value));
+      }
+      buf = Buffer.concat(chunks);
+    } else {
+      // A caller-supplied fetch with no stream body: buffer, then apply the same cap.
+      buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > maxBytes) {
+        return { ok: false, status: res.status, url: res.url, error: `body over ${maxBytes} bytes` };
+      }
     }
     return {
       ok: res.ok, status: res.status, url: res.url,
@@ -436,6 +459,58 @@ export function didConfigurationNames(doc, did) {
   return false;
 }
 
+/**
+ * Verify one Well Known DID Configuration entry: a DIF Domain Linkage Credential as a
+ * compact JWS. Fetched from the origin's own `/.well-known/did-configuration.json`, a
+ * verifying credential is the DOMAIN's statement that it controls the DID — the other half
+ * of the origin binding, and the difference between "names this did" and "proves it".
+ *
+ * The signature covers the ASCII TEXT of `<b64url header>.<b64url payload>` — never a
+ * re-serialization of what those segments decode to. base64url is UNPADDED, and a padded
+ * or standard-alphabet spelling is refused, not repaired: Node's own decoder is lenient,
+ * so the shape is gated by regex before any decode. `exp` is mandatory — a domain is
+ * leased, not owned, so a credential with no end date is indefinite authority over a name
+ * the issuer may no longer hold. `kid` is not enforced: the verifying key comes from `did`
+ * itself (with did:key the DID IS the key), so a kid check would only restate it.
+ *
+ * Never throws; every failure is named in `reasons` (verifyReply's shape), so a refusal
+ * always says which check refused.
+ */
+export function verifyDomainLinkage(token, { did, origin, now = Math.floor(Date.now() / 1000) } = {}) {
+  const out = { ok: false, reasons: [] };
+  try {
+    if (typeof token !== 'string') { out.reasons.push('not a compact JWS string'); return out; }
+    const segs = token.split('.');
+    if (segs.length !== 3 || !segs.every((x) => /^[A-Za-z0-9_-]+$/.test(x))) {
+      out.reasons.push('not unpadded base64url compact JWS — refused, not repaired');
+      return out;
+    }
+    const [h, pl, sg] = segs;
+    const header = JSON.parse(Buffer.from(h, 'base64url').toString('utf8'));
+    const payload = JSON.parse(Buffer.from(pl, 'base64url').toString('utf8'));
+    if (header?.alg !== 'EdDSA') out.reasons.push(`alg is ${header?.alg ?? 'absent'}, not EdDSA`);
+    const subject = payload?.vc?.credentialSubject;
+    if (!(payload?.iss === did && payload?.sub === did && subject?.id === did)) {
+      out.reasons.push("iss, sub and credentialSubject.id must all be the card's did");
+    }
+    const types = Array.isArray(payload?.vc?.type) ? payload.vc.type : [];
+    if (!types.includes('DomainLinkageCredential')) out.reasons.push('vc.type does not include DomainLinkageCredential');
+    const claimed = typeof subject?.origin === 'string' ? safeOrigin(subject.origin) : null;
+    if (!claimed || claimed !== safeOrigin(origin)) out.reasons.push(`credential origin (${subject?.origin ?? 'absent'}) is not the dialled origin`);
+    if (!Number.isSafeInteger(payload?.exp)) out.reasons.push('exp missing or not an integer — a domain is leased, not owned');
+    else if (now > payload.exp) out.reasons.push('expired');
+    if (payload?.nbf !== undefined && (!Number.isSafeInteger(payload.nbf) || now < payload.nbf)) out.reasons.push('not yet valid');
+    const sig = Buffer.from(sg, 'base64url');
+    if (sig.length !== 64 || !verifyEd25519(publicKeyFromDid(did), sig, Buffer.from(`${h}.${pl}`, 'utf8'))) {
+      out.reasons.push("signature does not verify over the JWS signing input under the did's key");
+    }
+  } catch {
+    out.reasons.push('unreadable credential');
+  }
+  out.ok = out.reasons.length === 0;
+  return out;
+}
+
 export function imperativeHint(html) {
   if (/\bmodelContext\b/.test(html)) return 'modelContext referenced in the page';
   if (/registerTool\s*\(/.test(html)) return 'registerTool( referenced in the page';
@@ -481,14 +556,35 @@ async function scanScripts(html, dialled, get) {
  * Discover which ways in `origin` offers. Reads the card (and its signature), the MCP server
  * card, and the front page's HTML. GET only; no browser; every failure is recorded in the
  * result rather than thrown.
+ *
+ * All requests share one wall-clock deadline (`opts.deadlineMs`, default 30 s) on top of the
+ * per-request timeout: a probe legitimately makes 10-17 GETs, and without a shared budget a
+ * black-holing origin holds it for minutes (prior art: core's 10 s open-door read budget,
+ * for one fetch). The GETs stay SEQUENTIAL on purpose — parallelising would scramble the
+ * order of `notes` and of the requests a site observes, for little gain in the honest case.
+ * A step not started before the deadline is skipped and recorded once in `notes`; it then
+ * reports through the normal absent-way reasons, never as a crash.
  */
 export async function probe(origin, opts = {}) {
   const fetchImpl = opts.fetch ?? globalThis.fetch;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const deadlineMs = opts.deadlineMs ?? DEFAULT_PROBE_DEADLINE_MS;
   const dialled = safeOrigin(origin);
   if (!dialled) throw new TypeError(`not an http(s) origin: ${origin}`);
   const notes = [];
-  const get = (path, maxBytes, accept) => getCapped(dialled + path, { fetchImpl, timeoutMs, maxBytes, accept });
+  const deadline = Date.now() + deadlineMs;
+  let deadlineNoted = false;
+  const get = (path, maxBytes, accept) => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      if (!deadlineNoted) {
+        deadlineNoted = true;
+        notes.push(`probe deadline (${deadlineMs} ms) passed: later steps were not attempted`);
+      }
+      return Promise.resolve({ ok: false, status: 0, url: dialled + path, error: 'probe deadline passed' });
+    }
+    return getCapped(dialled + path, { fetchImpl, timeoutMs: Math.min(remaining, timeoutMs), maxBytes, accept });
+  };
 
   // ---- card
   const card = { found: false, path: null, status: null, did: null, url: null, originBound: false,
@@ -529,11 +625,32 @@ export async function probe(origin, opts = {}) {
         .map((e) => (typeof e?.uri === 'string' ? e.uri : null)).filter(Boolean);
       card.domains = Array.isArray(doc.domains) ? doc.domains.filter((d) => typeof d === 'string') : [];
       // Well Known DID Configuration: the domain's own statement that it controls the DID —
-      // the other half of the origin binding. Naming only; the proof is not verified here.
+      // the other half of the origin binding. The naming is read first; when it names this
+      // card's did, the Domain Linkage proof itself is verified (AWR-7a). Only the dialled
+      // origin's document is read — a router never fetches another domain's configuration
+      // to prove this one. Entries are capped so a hostile document cannot buy Ed25519 CPU.
       const dc = await get(DID_CONFIGURATION_PATH, MAX_CARD_BYTES, 'application/json');
       if (dc.ok) {
         const dcDoc = parseJSON(dc.text);
-        card.domainBinding = dcDoc ? { found: true, namesCardDid: card.did ? didConfigurationNames(dcDoc, card.did) : false, verified: false } : { found: false };
+        if (!dcDoc) card.domainBinding = { found: false };
+        else {
+          const names = card.did ? didConfigurationNames(dcDoc, card.did) : false;
+          card.domainBinding = { found: true, namesCardDid: names, verified: false };
+          if (names) {
+            const entries = (Array.isArray(dcDoc.linked_dids) ? dcDoc.linked_dids : [])
+              .filter((e) => typeof e === 'string').slice(0, 16);
+            let firstReasons = null;
+            for (const e of entries) {
+              const v = verifyDomainLinkage(e, { did: card.did, origin: dialled });
+              if (v.ok) { card.domainBinding.verified = true; firstReasons = null; break; }
+              if (!firstReasons) firstReasons = v.reasons;
+            }
+            if (!card.domainBinding.verified && firstReasons) {
+              card.domainBinding.reasons = firstReasons;
+              notes.push(`did-configuration names the card's did but its proof does not verify: ${firstReasons[0]}`);
+            }
+          }
+        }
       }
       card.skills =Array.isArray(doc.skills) ? doc.skills.map((s) => ({ id: s?.id ?? null, name: s?.name ?? null, description: s?.description ?? null })) : [];
       card.originBound = Boolean(card.url && safeOrigin(card.url) === dialled);
@@ -552,22 +669,31 @@ export async function probe(origin, opts = {}) {
         notes.push(`${AGENT_CARD_SIG_PATH} answered ${sigRes.status}`);
       }
     }
-  } else if (res.status === 0) {
+  } else if (res.error) {
     notes.push(`card: ${res.error}`);
   }
 
   // ---- mcp server card (SEP-2127, draft)
-  const mcp = { declared: false, status: null, url: null, openAccess: false, doc: null };
+  const mcp = { declared: false, status: null, url: null, originBound: false, openAccess: false, doc: null };
   const mres = await get(MCP_SERVER_CARD_PATH, MAX_CARD_BYTES, 'application/json');
   mcp.status = mres.status;
-  if (mres.ok) {
+  if (mres.ok && safeOrigin(mres.url) !== dialled) {
+    // The mcp analogue of AWR-4: a server card that arrived via a redirect to another
+    // origin is somebody else's statement, not this site's.
+    notes.push(`mcp server card was served from ${safeOrigin(mres.url)}, not the dialled origin — ignored`);
+  } else if (mres.ok) {
     const doc = parseJSON(mres.text);
     if (doc) {
       mcp.declared = true;
       mcp.doc = doc;
       mcp.url = firstHttpUrl([doc.url, doc.endpoint, doc.transport?.url, doc.transport?.endpoint, doc.transports?.[0]?.url]);
       mcp.openAccess = doc.authentication === null || doc.authentication?.required === false || doc.auth === 'none';
+      // `/.well-known/mcp.json` is the origin's statement about itself, like `card.url` —
+      // and unlike a handoff `to`, an MCP endpoint carries no DID a reply could be
+      // verified under, so an endpoint elsewhere offers no cryptographic recourse at all.
+      mcp.originBound = Boolean(mcp.url && safeOrigin(mcp.url) === dialled);
       if (!mcp.url) notes.push('mcp server card declares no endpoint URL that could be found');
+      else if (!mcp.originBound) notes.push(`mcp endpoint (${mcp.url}) is not on the dialled origin — the server is not here`);
     } else {
       notes.push(`${MCP_SERVER_CARD_PATH} is not a JSON object`);
     }
@@ -689,6 +815,10 @@ export function route(ways, onHand = {}) {
     excluded.push({ kind: 'mcp', why: `no MCP server card (${MCP_SERVER_CARD_PATH} answered ${mcp.status ?? 'nothing'})` });
   } else if (!mcp.url) {
     excluded.push({ kind: 'mcp', why: 'server card declares no endpoint' });
+  } else if (!mcp.originBound) {
+    // Computed by probe (route never sees the dialled origin) — the card.originBound
+    // pattern. A hand-built `ways.mcp` without the flag loses the route: fail closed.
+    excluded.push({ kind: 'mcp', why: 'the server card\'s endpoint names another origin — the server is not the site you dialled' });
   } else if (on.token || mcp.openAccess) {
     routes.push({ kind: 'mcp', why: on.token ? 'a server is declared and you hold a token for it' : 'a server is declared and says it needs no credential' });
   } else {
@@ -955,10 +1085,11 @@ export function verifyReply(result, { doorDid, myDid, now = Math.floor(Date.now(
  * message is a replay by construction, and re-sending a fresh one inside the window is what
  * the door just asked the caller not to do. The caller decides whether to come back later.
  */
-export async function knock(origin, { key, text, contextId = null, timeoutMs, fetch: fetchImpl } = {}) {
+export async function knock(origin, { key, text, contextId = null, timeoutMs, deadlineMs, fetch: fetchImpl } = {}) {
   if (!key || typeof key.sign !== 'function' || typeof key.did !== 'string') throw new TypeError('knock: a loaded key is required (see loadKey)');
   const f = fetchImpl ?? globalThis.fetch;
-  const probed = await probe(origin, { timeoutMs, fetch: f });
+  // deadlineMs budgets the discovery probe; the POST below keeps its own timeout.
+  const probed = await probe(origin, { timeoutMs, deadlineMs, fetch: f });
   const decision = route(probed.ways, { key: true });
   const base = { origin: probed.origin, from: key.did, probe: probed };
   if (!decision.routes.some((r) => r.kind === 'card')) {

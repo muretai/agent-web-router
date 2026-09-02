@@ -32,7 +32,7 @@ against the site's own card, and **knock**: POST one signed message at the door 
 agent already holds, and verify the signed reply. It does not browse, scrape, or mint keys:
 when the page is the way in, it hands the page to the browser your harness already has.
 
-Zero dependencies. Node ≥ 20. MIT. Status: **0.4.0, not yet on npm.**
+Zero dependencies. Node ≥ 20. MIT. Status: **0.5.0, not yet on npm.**
 
 ## Try it
 
@@ -48,8 +48,10 @@ node bin/agent-web-router.mjs probe https://shop.example --json
 A probe reads the origin you name with GET only: the Agent Card at
 `/.well-known/agent-card.json` (falling back to the legacy `/.well-known/agent.json`) and its
 signature at `/.well-known/agent-card.sig.json` (plus the card's A2A `additionalInterfaces`,
-extension URIs, `domains`, and whether `/.well-known/did-configuration.json` names the card's
-DID — naming only, the proof is not verified); the MCP server card at `/.well-known/mcp.json`
+extension URIs, `domains`, and whether `/.well-known/did-configuration.json` **proves** the
+card's DID for this origin — the Domain Linkage Credential is verified: signature under the
+DID's own key over the JWS text, origin match, and a mandatory `exp`, each failure named);
+the MCP server card at `/.well-known/mcp.json`
 (SEP-2127, a draft at the time of writing); and the front page's HTML, from which it lists the
 **declarative** WebMCP tools (`<form toolname=… tooldescription=…>`) and reports a hint when
 the **imperative** API (`document.modelContext`) is referenced — the imperative tool list is
@@ -58,7 +60,7 @@ only observable by running the page, so the probe never claims it.
 Output, for a site that runs an Agent Entry and has a couple of declarative tools:
 
 ```
-agent-web-router 0.3.0 · https://shop.example
+agent-web-router 0.5.0 · https://shop.example
 
 ways in
   card   did:key:z6MkExample…
@@ -105,7 +107,14 @@ attempting the attack in `test/`.
 - **A signature that is present and fails is a refusal, never "unsigned".** A card that
   fails its own signature is exactly what a substituted card looks like. An *absent*
   signature is allowed through with a note: the door's signed reply is what proves the key.
+- **The MCP server card binds only its own origin.** An endpoint on another origin — or a
+  server card served from one — is excluded, exactly as a card is: `/.well-known/mcp.json`
+  is the origin's statement about itself, and an endpoint elsewhere carries no DID a reply
+  could ever be verified under.
 - **A probe is GET only.** Nothing here POSTs; the test suite asserts it.
+- **A probe is bounded.** Bodies are abandoned at the byte cap (never read to the end), and
+  every request shares one wall-clock deadline (default 30 s, `--deadline`) — a black-holing
+  origin cannot hold a probe, and what was not attempted is said in `notes`.
 - **robots.txt is honoured for a headless visit.** If the `*` group disallows the front page,
   the page is not a route for an agent alone — a headless visit is a crawl. A person in the
   tab is not a crawler, so their page route is untouched. The door is for agents and is not
@@ -161,6 +170,10 @@ you not to do. Whether to come back later is yours to decide, with the door's ow
 visit, per machine, per site — decides whether the site sees one returning visitor or a
 stranger every time, and that is the agent's decision. Without a key, `knock` sends nothing
 and prints the door's own instructions for making one.
+
+To continue a conversation, pass the `contextId` a verified reply carried back on your next
+knock with `--context <id>` — it is one of the six signed fields, so the door's verifier
+sees it under your signature, not beside it. The printed reply names the id.
 
 The signing bytes are checked against the Agent Entry conformance vectors in `test/`
 (canonical JSON, the six-field payload, did:key derivation, the envelopes a door must
@@ -240,9 +253,10 @@ const handoff = parseHandoff(toolResult);                            // null whe
 const { accepted, refused } = checkHandoff(handoff, { origin: 'https://shop.example', card: result.ways.card.card });
 ```
 
-`probe(origin, { fetch, timeoutMs })` accepts a custom `fetch` for tests and a timeout
-(default 8 s). Bodies are capped (256 KiB for a card, 1 MiB for the page); over the cap is a
-finding, not a crash.
+`probe(origin, { fetch, timeoutMs, deadlineMs })` accepts a custom `fetch` for tests, a
+per-request timeout (default 8 s) and a shared wall-clock deadline (default 30 s). Bodies are
+capped (256 KiB for a card, 1 MiB for the page) and abandoned at the cap, never read to the
+end; over the cap is a finding, not a crash.
 
 ## Relation to Agent Entry
 

@@ -107,9 +107,20 @@ async function startSite(build) {
   let headers = {};
   let markdown = null;
   let door = null;          // { replyKey, refuse } — a door that verifies and answers signed
+  let redirects = {};       // path -> absolute URL, answered 302
+  let endless = [];         // paths whose body never ends (a stream that trickles forever)
+  let stall = false;        // accept the connection, never answer (a black hole)
   const posts = [];
   const server = http.createServer((req, res) => {
     const path = req.url.split('?')[0];
+    if (stall) return;      // the socket stays open; only close() tears it down
+    if (redirects[path]) { res.writeHead(302, { location: redirects[path] }); res.end(); return; }
+    if (endless.includes(path)) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      const drip = setInterval(() => res.write(' '.repeat(64 * 1024)), 5);
+      res.on('close', () => clearInterval(drip));
+      return;
+    }
     if (req.method === 'POST') {
       let body = '';
       req.on('data', (c) => { body += c; });
@@ -131,7 +142,7 @@ async function startSite(build) {
         try { ok = !door.refuse && verify(null, Buffer.from(sixFields(msg), 'utf8'), publicKeyOf(meta.from), Buffer.from(meta.sig, 'base64')); } catch { ok = false; }
         res.writeHead(200, { 'content-type': 'application/json' });
         if (!ok) { res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc?.id ?? null, error: { code: -32001, message: 'signature verification failed', data: { howTo: `${base}/how-to` } } })); return; }
-        const reply = { kind: 'message', role: 'agent', parts: [{ kind: 'text', text: `Hello, ${meta.from}. Ask away.` }], messageId: randomUUID(), contextId: msg.contextId ?? null };
+        const reply = { kind: 'message', role: 'agent', parts: [{ kind: 'text', text: `Hello, ${meta.from}. Ask away.` }], messageId: randomUUID(), contextId: msg.contextId ?? (door.mintContext ? randomUUID() : null) };
         const ts = Math.floor(Date.now() / 1000) - (door.stale ? 1000 : 0);
         const signer = door.replyKey;
         const payload = canon({ contextId: reply.contextId, from: signer.did, messageId: reply.messageId, text: reply.parts[0].text, timestamp: ts, to: meta.from });
@@ -164,7 +175,12 @@ async function startSite(build) {
   if (parts.markdown) markdown = parts.markdown;
   if (parts.headers) headers = parts.headers;
   if (parts.door) door = { replyKey: id, ...parts.door };
-  return { base, id, posts, close: () => new Promise((r) => server.close(r)) };
+  if (parts.redirects) redirects = parts.redirects;
+  if (parts.endless) endless = parts.endless;
+  if (parts.stall) stall = true;
+  const sockets = new Set();
+  server.on('connection', (s) => { sockets.add(s); s.on('close', () => sockets.delete(s)); });
+  return { base, id, posts, close: () => new Promise((r) => { for (const s of sockets) s.destroy(); server.close(r); }) };
 }
 
 function keyFile(id, form = 'json') {
@@ -356,6 +372,78 @@ test('ATTACK: a card whose url names another origin is not this site\'s door', a
   } finally { await site.close(); }
 });
 
+test('ATTACK: a body that never ends is abandoned at the cap — a finding, not a crash', async () => {
+  const site = await startSite(() => ({ endless: ['/.well-known/agent-card.json'] }));
+  try {
+    const { code, out } = await probeJSON(site.base, '--timeout', '8000');
+    assert.equal(code, 2);
+    assert.equal(out.ways.card.found, false);
+    assert.ok(out.notes.some((n) => /body over \d+ bytes/.test(n)), JSON.stringify(out.notes));
+    assert.ok(!out.notes.some((n) => /timeout/.test(n)), 'the cap must fire, not the timer: ' + JSON.stringify(out.notes));
+  } finally { await site.close(); }
+});
+
+test('a black-holing origin cannot hold a probe past the deadline; steps not reached are notes, not a crash', async () => {
+  const site = await startSite(() => ({ stall: true }));
+  try {
+    const started = Date.now();
+    const { code, out } = await probeJSON(site.base, '--timeout', '4000', '--deadline', '1000');
+    const elapsed = Date.now() - started;
+    assert.equal(code, 2);
+    assert.ok(out.notes.some((n) => /probe deadline \(1000 ms\) passed/.test(n)), JSON.stringify(out.notes));
+    // Un-deadlined, three stalled GETs alone cost >= 12 s at --timeout 4000; the bound is
+    // coarse on purpose (CI noise), but it can only hold when the deadline is enforced.
+    assert.ok(elapsed < 6000, `probe took ${elapsed} ms`);
+    assert.equal(out.ways.card.found, false);
+    assert.equal(out.ways.mcp.declared, false);
+  } finally { await site.close(); }
+});
+
+test('ATTACK: a card served through a redirect to another origin is discarded, and the probe says so', async () => {
+  // B's card is fully valid — even signed — for B's OWN origin. That is exactly why it is
+  // not A's card: a redirect is a substitution, whatever the substituted card's quality.
+  const siteB = await startSite((base, id) => { const card = makeCard(base, id.did); return { card, sig: signedCard(card, id.privateKey) }; });
+  try {
+    const siteA = await startSite(() => ({ redirects: { '/.well-known/agent-card.json': `${siteB.base}/.well-known/agent-card.json` } }));
+    try {
+      const { code, out } = await probeJSON(siteA.base);
+      assert.equal(code, 2);
+      assert.equal(out.ways.card.found, false);
+      const note = out.notes.find((n) => /card was served from .*, not the dialled origin — ignored/.test(n));
+      assert.ok(note, JSON.stringify(out.notes));
+      assert.ok(note.includes(siteB.base), 'the note names where the card really came from — proof the redirect was followed');
+      assert.equal(out.route.excluded.find((x) => x.kind === 'card').why.includes('no Agent Card'), true);
+    } finally { await siteA.close(); }
+  } finally { await siteB.close(); }
+});
+
+test('ATTACK: an mcp endpoint on another origin is excluded, not dialled', async () => {
+  const site = await startSite(() => ({ mcp: { url: 'https://elsewhere.example/mcp', authentication: { required: false } } }));
+  try {
+    const { code, out } = await probeJSON(site.base);
+    assert.equal(code, 2);
+    assert.equal(out.ways.mcp.declared, true);
+    assert.equal(out.ways.mcp.originBound, false);
+    assert.ok(!out.route.routes.some((r) => r.kind === 'mcp'), 'open access must not launder the origin');
+    assert.match(out.route.excluded.find((x) => x.kind === 'mcp').why, /another origin/);
+    assert.ok(out.notes.some((n) => n.includes('elsewhere.example')), JSON.stringify(out.notes));
+    const withToken = await probeJSON(site.base, '--token');
+    assert.ok(!withToken.out.route.routes.some((r) => r.kind === 'mcp'), 'a token must not launder the origin');
+
+    // The served-from half: a server card that arrives via a redirect from another origin
+    // is somebody else's statement — ignored altogether, as a card is under AWR-4.
+    const other = await startSite(() => ({ mcp: { url: `${site.base}/mcp` } }));
+    try {
+      const redirecting = await startSite(() => ({ redirects: { '/.well-known/mcp.json': `${other.base}/.well-known/mcp.json` } }));
+      try {
+        const r2 = await probeJSON(redirecting.base);
+        assert.equal(r2.out.ways.mcp.declared, false);
+        assert.ok(r2.out.notes.some((n) => /mcp server card was served from .*, not the dialled origin/.test(n)), JSON.stringify(r2.out.notes));
+      } finally { await redirecting.close(); }
+    } finally { await other.close(); }
+  } finally { await site.close(); }
+});
+
 // ================================================================ signposts
 
 test('signposts are reported in one place and never become a route', async () => {
@@ -457,6 +545,23 @@ test('a site with no Markdown edition reports markdown: not offered', async () =
   } finally { await site.close(); }
 });
 
+function domainLinkageJWT(id, origin, { exp, nbf, omitExp } = {}) {
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const at = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: id.did, sub: id.did, nbf: nbf ?? at - 60,
+    vc: {
+      '@context': ['https://www.w3.org/2018/credentials/v1', 'https://identity.foundation/.well-known/did-configuration/v1'],
+      issuer: id.did,
+      credentialSubject: { id: id.did, origin },
+      type: ['VerifiableCredential', 'DomainLinkageCredential'],
+    },
+  };
+  if (!omitExp) payload.exp = exp ?? at + 3600;
+  const input = `${b64({ alg: 'EdDSA', kid: `${id.did}#${id.did.slice('did:key:'.length)}`, typ: 'JWT' })}.${b64(payload)}`;
+  return `${input}.${sign(null, Buffer.from(input, 'utf8'), id.privateKey).toString('base64url')}`;
+}
+
 function jwtNaming(did) {
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   return `${b64({ alg: 'EdDSA', typ: 'JWT' })}.${b64({ iss: did, sub: did, vc: { credentialSubject: { id: did } } })}.c2ln`;
@@ -476,7 +581,11 @@ test('the card\'s other faces: A2A interfaces, extensions, domains, and whether 
     assert.deepEqual(out.ways.card.interfaces, [{ url: `${site.base}/`, transport: 'JSONRPC' }, { url: `${site.base}/grpc`, transport: 'GRPC' }]);
     assert.deepEqual(out.ways.card.extensions, ['https://example.com/ext/one']);
     assert.deepEqual(out.ways.card.domains, ['example.com']);
-    assert.deepEqual(out.ways.card.domainBinding, { found: true, namesCardDid: true, verified: false });
+    const b = out.ways.card.domainBinding;
+    assert.equal(b.found, true);
+    assert.equal(b.namesCardDid, true);
+    assert.equal(b.verified, false, 'a naming entry with a fake signature must not verify');
+    assert.ok(Array.isArray(b.reasons) && b.reasons.length, 'the failing proof is refused by name');
   } finally { await site.close(); }
 });
 
@@ -487,6 +596,31 @@ test('a did-configuration that names another DID is reported as not naming this 
     const { out } = await probeJSON(site.base);
     assert.deepEqual(out.ways.card.domainBinding, { found: true, namesCardDid: false, verified: false });
   } finally { await site.close(); }
+});
+
+test('the domain linkage proof is verified, not just read: a real credential passes, a wrong origin and a missing exp are refused by name', async () => {
+  const good = await startSite((base, id) => ({ card: makeCard(base, id.did), didConfig: { linked_dids: [domainLinkageJWT(id, base)] } }));
+  try {
+    const { out } = await probeJSON(good.base);
+    assert.deepEqual(out.ways.card.domainBinding, { found: true, namesCardDid: true, verified: true });
+    const text = await cli('probe', good.base);
+    assert.match(text.stdout, /did-configuration: proves this did for this origin/);
+  } finally { await good.close(); }
+
+  const wrongOrigin = await startSite((base, id) => ({ card: makeCard(base, id.did), didConfig: { linked_dids: [domainLinkageJWT(id, 'https://elsewhere.example')] } }));
+  try {
+    const { out } = await probeJSON(wrongOrigin.base);
+    assert.equal(out.ways.card.domainBinding.verified, false);
+    assert.ok(out.ways.card.domainBinding.reasons.some((r) => /origin/.test(r)), JSON.stringify(out.ways.card.domainBinding));
+    assert.ok(out.notes.some((n) => /proof does not verify/.test(n)), JSON.stringify(out.notes));
+  } finally { await wrongOrigin.close(); }
+
+  const noExp = await startSite((base, id) => ({ card: makeCard(base, id.did), didConfig: { linked_dids: [domainLinkageJWT(id, base, { omitExp: true })] } }));
+  try {
+    const { out } = await probeJSON(noExp.base);
+    assert.equal(out.ways.card.domainBinding.verified, false);
+    assert.ok(out.ways.card.domainBinding.reasons.some((r) => /exp/.test(r)), JSON.stringify(out.ways.card.domainBinding));
+  } finally { await noExp.close(); }
 });
 
 // ================================================================ the site's own order
@@ -687,6 +821,29 @@ test('knock without a key sends nothing and prints the door\'s own how-to', asyn
     assert.equal(out.sent, false);
     assert.equal(out.knock.howTo, `${site.base}/agent-entry/how-to`);
     assert.equal(site.posts.length, 0);
+  } finally { await site.close(); }
+});
+
+test('knock --context continues the conversation: the second knock carries the reply\'s contextId and still verifies', async () => {
+  const visitor = makeIdentity();
+  // An A2A-style door that assigns a contextId when the visitor arrives without one.
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), door: { mintContext: true } }));
+  try {
+    const first = JSON.parse((await cli('knock', site.base, '--key', keyFile(visitor), '--json')).stdout);
+    assert.equal(first.verified, true);
+    const ctx = first.reply.contextId;
+    assert.equal(typeof ctx, 'string');
+
+    const r = await cli('knock', site.base, '--key', keyFile(visitor), '--context', ctx, '--text', 'And for six people?');
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+    // The printed line teaches the continuation, and names the id.
+    assert.match(r.stdout, new RegExp(`context ${ctx} — pass --context to continue this conversation`));
+    assert.equal(site.posts.length, 2);
+    const sent = JSON.parse(site.posts[1].body).params.message;
+    assert.equal(sent.contextId, ctx, 'the second knock carries the contextId');
+    // r.code 0 means the fixture door VERIFIED the signature with its own independent
+    // canonicalizer — proof the contextId was signed as one of the six fields, since a
+    // payload signed over null would no longer verify.
   } finally { await site.close(); }
 });
 
