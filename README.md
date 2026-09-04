@@ -2,33 +2,26 @@
 
 **Your agent is about to visit a website. Don't open the browser yet.**
 
-The site may have published an **Agent Card**, an **MCP server**, **WebMCP** tools in the
-page — or none. MCP and WebMCP are often named together. They are not the same thing.
+The site may already have said how it wants agents in. This package reads that,
+checks it really belongs to the origin you dialled, and picks a way in from what
+you hold — a key, a token, a person in the tab, a browser. If there is nothing
+to take, it says why and exits 2.
 
-| | what it is | needs | no person in the tab |
-|---|---|---|---|
-| **Agent Card** | an A2A door over HTTP | your key | **take it** |
-| **MCP** | a tool *server* over HTTP (`/.well-known/mcp.json`) | a token | **take it** |
-| **WebMCP** | tools *in the page* (`<form toolname>` / `document.modelContext`) | a browser tab | do not scrape; wait for a browser, or take Card/MCP |
-
-This package finds what is actually there, checks it belongs to the origin you dialled, and
-picks a way in from what *you* hold. If the site prepared an agent-native way (Card and/or
-MCP) and the agent is alone, take that way. Do not open a headless browser at the page just
-because WebMCP exists — that visit is a crawl.
-
-A site that published only a card still works. Only MCP still works. Only WebMCP still
-works. If there is nothing to take, it says why and exits 2.
+Opening the page first is how an agent follows a rewritten address — carrying
+*your* signed identity — to someone else's door. If nobody is in the tab and
+the site prepared a way in that does not need a browser, take that. Do not
+scrape the page just because it has tools on it.
 
 | | |
 |---|---|
 | **Who installs this** | People whose *agent* visits sites it did not build — harness authors, IDE agents, a crawler that should knock instead of scrape. |
-| **Not for** | Website owners putting up a door or registering WebMCP tools. This package does not run on the site. |
-| **The problem** | Opening the page first is how an agent follows a rewritten `to` — with *your* signed identity — to someone else's door. The site already said how it wants to be entered. Read that, then stop. |
+| **Not for** | Website owners putting up a door or putting tools in the page. This package does not run on the site. |
+| **The problem** | The site already said how it wants to be entered. Read that, then stop. |
 
-![MCP is a server. WebMCP is tools in the page. With no person in the tab, take the Agent Card or MCP — do not scrape WebMCP.](diagrams/ways.svg)
+A site can offer three different ways in. They are often named together. They
+are not the same thing, and a site that prepared all three should keep all three:
 
-A site can be entered three ways, and they are not rivals — a site that prepared all three
-should keep all three:
+![MCP is a server. WebMCP is tools in the page. With no person in the tab, take the site's own door or its MCP server — do not scrape the page.](diagrams/ways.svg)
 
 | way | where it runs | acts as | what remains |
 |---|---|---|---|

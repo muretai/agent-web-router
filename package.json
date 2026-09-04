@@ -1,7 +1,7 @@
 {
   "name": "@muretai/agent-web-router",
   "version": "0.5.0",
-  "description": "Before your agent opens a browser: find how a website wants to be entered — Agent Card, MCP server, or WebMCP in the page. MCP and WebMCP are different. No person in the tab? Take Card/MCP; do not scrape the page. Any A2A door. Zero dependencies.",
+  "description": "Your agent is about to visit a website. Find how that site wants to be entered before you open a browser — and do not follow a pointer to someone else's door. Zero dependencies.",
   "type": "module",
   "main": "agent-web-router.mjs",
   "exports": {
