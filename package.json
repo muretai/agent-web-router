@@ -1,7 +1,7 @@
 {
   "name": "@muretai/agent-web-router",
   "version": "0.5.0",
-  "description": "Let your agent talk to a website — not scrape it. You stay who you are; they can remember you. It may offer an Agent Card (any A2A door), an MCP server, or WebMCP in the page — MCP and WebMCP are different. No person in the tab? Take the card or MCP. Do not follow a pointer to someone else's door. Zero dependencies.",
+  "description": "Let your agent talk to a website — not scrape it. The agent knocks as itself, so that site can recognise the same agent next time. It may offer an Agent Card (any A2A door), an MCP server, or WebMCP in the page — MCP and WebMCP are different. No person in the tab? Take the card or MCP. Do not follow a pointer to someone else's door. Zero dependencies.",
   "type": "module",
   "main": "agent-web-router.mjs",
   "exports": {

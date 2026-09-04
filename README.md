@@ -5,8 +5,8 @@
 
 **Let your agent talk to a website — not scrape it.**
 
-Your agent gets a way in the site published. You stay who you are; they can
-remember you. A scrape leaves neither.
+Your agent gets a way in the site published. It knocks as itself, so that
+site can recognise the same agent next time. A scrape leaves neither.
 
 ## Contents
 
