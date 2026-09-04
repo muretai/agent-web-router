@@ -3,7 +3,10 @@
 [![npm](https://img.shields.io/npm/v/@muretai/agent-web-router.svg?label=npm)](https://www.npmjs.com/package/@muretai/agent-web-router)
 [![LICENSE](https://img.shields.io/badge/LICENSE-MIT-blue.svg)](LICENSE)
 
-**Your agent is about to visit a website. Don't open the browser yet.**
+**Let your agent talk to a website — not scrape it.**
+
+Your agent gets a way in the site published. You stay who you are; they can
+remember you. A scrape leaves neither.
 
 ## Contents
 
@@ -18,12 +21,12 @@
 
 ## What this is
 
-Find how that site wants to be entered. It may offer three different doors:
-an Agent Card (any A2A door, not one vendor), an MCP server, or WebMCP tools
-in the page. MCP and WebMCP are often named together; they are not the same
-thing. This package reads what is there, checks it belongs to the origin you
-dialled, and picks a way in from what you hold — a key, a token, a person in
-the tab, a browser. If there is nothing to take, it says why and exits 2.
+A site may offer three different doors: an Agent Card (any A2A door, not one
+vendor), an MCP server, or WebMCP tools in the page. MCP and WebMCP are often
+named together; they are not the same thing. This package reads what is there,
+checks it belongs to the origin you dialled, and picks a way in from what you
+hold — a key, a token, a person in the tab, a browser. If there is nothing to
+take, it says why and exits 2.
 
 Opening the page first is how an agent follows a rewritten address — carrying
 *your* signed identity — to someone else's door. If nobody is in the tab and
@@ -34,7 +37,7 @@ just because WebMCP exists.
 |---|---|
 | **Who installs this** | People whose *agent* visits sites it did not build — harness authors, IDE agents, a crawler that should knock instead of scrape. |
 | **Not for** | Website owners putting up a door or putting tools in the page. This package does not run on the site. |
-| **The problem** | The site already said how it wants to be entered. Read that, then stop. |
+| **The problem** | A scrape spends tokens and leaves no one the site can remember. A rewritten address can take your signed identity to someone else. |
 
 A site can offer three different ways in. They are often named together. They
 are not the same thing, and a site that prepared all three should keep all three:

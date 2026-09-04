@@ -1,6 +1,6 @@
 ---
 name: agent-web-router
-description: Find how a website wants agents to enter before you open a browser — an Agent Card (any A2A door), a declared MCP server, or WebMCP tools in the page. MCP and WebMCP are different. If no person is in the tab and the site published a Card or MCP, take that; do not scrape the page. Check it is really the site's. Follow a handoff only where the card points. Not tied to one vendor's door.
+description: Talk to a website at the door it published — do not scrape the page. Find the Agent Card (any A2A door), a declared MCP server, or WebMCP tools in the page. MCP and WebMCP are different. If no person is in the tab and the site published a Card or MCP, take that. Check it is really the site's. Follow a handoff only where the card points. Not tied to one vendor's door.
 ---
 
 # Agent Web Router — the skill
