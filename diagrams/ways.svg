@@ -1,13 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 300" role="img">
-  <title>The agent-native visit is the Agent Card.</title>
-  <rect width="740" height="300" fill="#fafafa"/>
-  <text x="24" y="26" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#666">Help your agent behave on the site it visits.</text>
-  <rect x="20" y="40" width="700" height="140" rx="10" fill="#111"/>
-  <text x="370" y="78" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="700" fill="#fff">Agent Card</text>
-  <text x="370" y="108" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="#ddd">the agent-native visit</text>
-  <text x="370" y="148" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="#fff">Find it. Check it is theirs. Knock.</text>
-  <text x="370" y="214" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#555">WebMCP is the existing page, when a person is already there. Not this visit.</text>
-  <text x="370" y="240" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#555">MCP is a tool account behind a token. A different purpose. Not this visit.</text>
-  <text x="370" y="278" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#111">Do not follow a pointer to someone else's door.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 340" role="img">
+  <title>Is a person in the tab?</title>
+  <rect width="740" height="340" fill="#fafafa"/>
+  <rect x="190" y="16" width="360" height="48" rx="8" fill="#fff" stroke="#111"/>
+  <text x="370" y="46" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#111">Is a person in the tab?</text>
+  <path d="M260 64 L160 100" stroke="#111" stroke-width="1.5" fill="none"/>
+  <path d="M480 64 L540 100" stroke="#111" stroke-width="1.5" fill="none"/>
+  <text x="180" y="92" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#555">yes</text>
+  <text x="500" y="92" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#555">no</text>
+  <rect x="20" y="104" width="280" height="80" rx="8" fill="#111"/>
+  <text x="160" y="138" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#fff">WebMCP</text>
+  <text x="160" y="164" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#ddd">the page is theirs</text>
+  <rect x="360" y="104" width="360" height="80" rx="8" fill="#fff" stroke="#111"/>
+  <text x="540" y="138" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="700" fill="#111">Site already published</text>
+  <text x="540" y="162" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="700" fill="#111">an Agent Card?</text>
+  <path d="M450 184 L430 216" stroke="#111" stroke-width="1.5" fill="none"/>
+  <path d="M630 184 L650 216" stroke="#111" stroke-width="1.5" fill="none"/>
+  <text x="408" y="208" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#555">yes</text>
+  <text x="656" y="208" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#555">no</text>
+  <rect x="360" y="220" width="170" height="72" rx="8" fill="#fff" stroke="#111"/>
+  <text x="445" y="248" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="#111">Take the card.</text>
+  <text x="445" y="270" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#555">Check origin. Knock.</text>
+  <rect x="550" y="220" width="170" height="72" rx="8" fill="#fff" stroke="#111"/>
+  <text x="635" y="248" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="#111">Stay with WebMCP</text>
+  <text x="635" y="270" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#555">if a browser is on hand</text>
+  <text x="370" y="322" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#555">Does not replace WebMCP. Does not follow a pointer to someone else's door.</text>
 </svg>

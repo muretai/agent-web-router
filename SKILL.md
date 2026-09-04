@@ -1,24 +1,26 @@
 ---
 name: agent-web-router
-description: Behave on a website as an agent — find the Agent Card (any A2A door), check it is really the site's, and knock. WebMCP is the existing page when a person is already there, not that visit. MCP is a tool account, a different purpose. Follow a handoff only where the card points. Not tied to one vendor's door.
+description: Behave on a website. A person already in the tab keeps WebMCP. When you are alone and the site already published an Agent Card (any A2A door), take that door, check it is theirs, and knock. Do not open WebMCP first. MCP is a tool account, a different purpose. Follow a handoff only where the card points.
 ---
 
 # Agent Web Router — the skill
 
-You are about to visit a website as an agent. The agent-native visit is the
-Agent Card. Find it, check it is theirs, knock. The browser you already have
-and the key you already hold do the visiting.
+You are about to visit a website as an agent.
 
-WebMCP is not that visit: tools on the existing page, when a person is already
-there. MCP is not that visit: a tool account behind a token, a different
-purpose. The command line will mention them when they are there. Do not treat
-either as another Agent Card.
+If a person is already in the tab, stay on the page. That is WebMCP. Do not
+replace it. If you are alone and the site already published an Agent Card,
+take that door, check it is theirs, knock — do not open WebMCP first. If you
+are alone and there is no card, stay with WebMCP only if you carry a browser
+and robots.txt allows it.
+
+MCP is a tool account behind a token. A different purpose. The command line
+will mention it when it is there.
 
 | | what it is | you need |
 |---|---|---|
-| **card** | the Agent Card at `/.well-known/agent-card.json` and the door it names: POST one signed message, get a signed reply | your own Ed25519 key — nothing else |
-| **page** | WebMCP — not the agent-native visit; the existing page | a person already in the tab |
-| **mcp** | MCP — not the agent-native visit; a tool account | a token for that server |
+| **page** | WebMCP — the existing page, when a person is in the tab | the person's browser |
+| **card** | the Agent Card at `/.well-known/agent-card.json` and the door it names | your own Ed25519 key — when you are alone and the site published one |
+| **mcp** | a tool account (different purpose) | a token for that server |
 
 ## With the command line (preferred)
 

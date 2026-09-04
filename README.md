@@ -5,8 +5,10 @@
 
 **Help your agent behave on the websites it visits.**
 
-It finds the door that site published, checks it is really theirs, and knocks.
-It does not follow a pointer to someone else's door.
+A person already in the tab keeps the page — this does not replace WebMCP.
+When the agent is alone and the site already published an Agent Card, it takes
+that door, checks it is theirs, and knocks. It does not follow a pointer to
+someone else's door.
 
 ## Contents
 
@@ -21,26 +23,29 @@ It does not follow a pointer to someone else's door.
 
 ## What this is
 
-The agent-native visit is the **Agent Card** (any A2A door, not one vendor).
-This package finds that card, checks it belongs to the origin you dialled, and
-knocks: one signed POST, a signed reply. If there is no card to take, it says
-why and exits 2.
+![Is a person in the tab?](diagrams/behave.png)
+
+| Who is looking | What the site already published | What this package does |
+|---|---|---|
+| A person is in the tab | WebMCP (the usual case) | Stay on the page. Do not replace WebMCP. |
+| A person is in the tab | WebMCP and an Agent Card | The page is still theirs. The card is there if this visit should become a customer. |
+| The agent is alone (including headless) | an Agent Card | Take the card. Check it is theirs. Knock. Use what the card published now — do not open WebMCP first. |
+| The agent is alone | WebMCP only, no card | The page, only if a browser is on hand and robots.txt allows. |
+
+An Agent Card is any A2A door, not one vendor. If there is nothing to take, the
+package says why and exits 2.
 
 Opening the page first is how an agent follows a rewritten address — carrying
 *your* signed identity — to someone else's door.
 
-WebMCP is not that visit. It is tools on the existing page, for a person already
-in the tab. MCP is not that visit either. It is a tool account behind a token —
-a different purpose. The probe will mention both when they are there. It does
-not treat them as another Agent Card.
+MCP is a tool account behind a token. A different purpose. The probe will
+mention it when it is there.
 
 | | |
 |---|---|
 | **Who installs this** | People whose *agent* visits sites it did not build — harness authors, IDE agents. |
 | **Not for** | Website owners putting up a door. This package does not run on the site. |
 | **The problem** | Opening the page first can take the agent's signed identity to someone else's door. |
-
-![The agent-native visit is the Agent Card.](diagrams/behave.png)
 
 The router does four things and nothing else: **probe** an origin (GET only — it never runs
 page script, never opens a browser), **route** (the card when the visit is the agent's;
