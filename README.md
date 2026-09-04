@@ -2,15 +2,17 @@
 
 **Your agent is about to visit a website. Don't open the browser yet.**
 
-The site may already have said how it wants agents in. This package reads that,
-checks it really belongs to the origin you dialled, and picks a way in from what
-you hold — a key, a token, a person in the tab, a browser. If there is nothing
-to take, it says why and exits 2.
+Find how that site wants to be entered. It may offer three different doors:
+an Agent Card (any A2A door, not one vendor), an MCP server, or WebMCP tools
+in the page. MCP and WebMCP are often named together; they are not the same
+thing. This package reads what is there, checks it belongs to the origin you
+dialled, and picks a way in from what you hold — a key, a token, a person in
+the tab, a browser. If there is nothing to take, it says why and exits 2.
 
 Opening the page first is how an agent follows a rewritten address — carrying
 *your* signed identity — to someone else's door. If nobody is in the tab and
-the site prepared a way in that does not need a browser, take that. Do not
-scrape the page just because it has tools on it.
+the site prepared a card or an MCP server, take that. Do not scrape the page
+just because WebMCP exists.
 
 | | |
 |---|---|
