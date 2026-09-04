@@ -3,10 +3,11 @@
 [![npm](https://img.shields.io/npm/v/@muretai/agent-web-router.svg?label=npm)](https://www.npmjs.com/package/@muretai/agent-web-router)
 [![LICENSE](https://img.shields.io/badge/LICENSE-MIT-blue.svg)](LICENSE)
 
-**Let your agent talk to a website — not scrape it.**
+**Help your agent behave on the websites it visits.**
 
-Your agent gets a way in the site published. It knocks as itself, so that
-site can recognise the same agent next time. A scrape leaves neither.
+It finds the door that site published, checks it is really theirs, and knocks.
+It does not scrape the page, and it does not follow a pointer to someone
+else's door.
 
 ## Contents
 
@@ -37,7 +38,7 @@ just because WebMCP exists.
 |---|---|
 | **Who installs this** | People whose *agent* visits sites it did not build — harness authors, IDE agents, a crawler that should knock instead of scrape. |
 | **Not for** | Website owners putting up a door or putting tools in the page. This package does not run on the site. |
-| **The problem** | A scrape spends tokens and leaves no one the site can remember. A rewritten address can take your signed identity to someone else. |
+| **The problem** | A scrape is a bad visit. Opening the page first can take the agent's signed identity to someone else's door. |
 
 A site can offer three different ways in. They are often named together. They
 are not the same thing, and a site that prepared all three should keep all three:
