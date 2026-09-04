@@ -44,7 +44,7 @@ may have published, and a site that prepared all three should keep all three.
 The comparison is a scrape — a badly behaved visit — against using what the
 site published:
 
-<img src="diagrams/ways.svg" alt="A scrape is a bad visit. Use what the site published." width="740" />
+![A scrape is a bad visit. Use what the site published.](diagrams/visit.png)
 
 | published | job | you need | what remains |
 |---|---|---|---|
