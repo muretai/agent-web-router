@@ -22,12 +22,11 @@ else's door.
 
 ## What this is
 
-A site may offer three different doors: an Agent Card (any A2A door, not one
-vendor), an MCP server, or WebMCP tools in the page. MCP and WebMCP are often
-named together; they are not the same thing. This package reads what is there,
-checks it belongs to the origin you dialled, and picks a way in from what you
-hold — a key, a token, a person in the tab, a browser. If there is nothing to
-take, it says why and exits 2.
+A site may have published an Agent Card (any A2A door, not one vendor), an MCP
+server, or WebMCP tools in the page. Those are different jobs, often named
+together. This package reads what is there, checks it belongs to the origin you
+dialled, and takes the one that fits what you hold — a key, a token, a person
+in the tab, a browser. If there is nothing to take, it says why and exits 2.
 
 Opening the page first is how an agent follows a rewritten address — carrying
 *your* signed identity — to someone else's door. If nobody is in the tab and
@@ -40,19 +39,21 @@ just because WebMCP exists.
 | **Not for** | Website owners putting up a door or putting tools in the page. This package does not run on the site. |
 | **The problem** | A scrape is a bad visit. Opening the page first can take the agent's signed identity to someone else's door. |
 
-A site can offer three different ways in. They are often named together. They
-are not the same thing, and a site that prepared all three should keep all three:
+The comparison is not Card vs MCP vs WebMCP. Those are different jobs a site
+may have published, and a site that prepared all three should keep all three.
+The comparison is a scrape — a badly behaved visit — against using what the
+site published:
 
-![MCP is a server. WebMCP is tools in the page. With no person in the tab, take the site's own door or its MCP server — do not scrape the page.](diagrams/ways.svg)
+![A scrape dumps the page. A well-behaved visit uses what the site published: an Agent Card (agent-native), WebMCP (a person on the existing page), or an MCP server (a tool account — a different job).](diagrams/ways.svg)
 
-| way | where it runs | acts as | what remains |
+| published | job | you need | what remains |
 |---|---|---|---|
-| **page** — WebMCP tools in the page | a browser tab | the browser's session; headless, nobody | nothing; it closes with the tab |
-| **mcp** — an MCP server the site declares | over HTTP | whoever the token names | an account on that server |
-| **card** — the Agent Card and the A2A door it names | over HTTP | the agent's own key, a `did:key` | a counterparty the site can reach again |
+| **card** — the Agent Card and the A2A door it names | an agent-native visit | the agent's own key, a `did:key` | a counterparty the site can reach again |
+| **page** — WebMCP tools in the page | the existing page | a person in the tab | nothing; it closes with the tab |
+| **mcp** — an MCP server the site declares | a tool account | a token | an account on that server |
 
-Which one to take depends on **what the agent has on hand**, and that is the whole decision
-this tool makes:
+Which published job to take depends on **what the visit is**, and that is the
+decision this tool makes:
 
 - **a person is in the tab** → WebMCP (the page). It is theirs; its tools run in their session.
 - **the agent is alone** → the Agent Card first (its key is all it needs), the MCP server if

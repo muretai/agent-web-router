@@ -5,10 +5,11 @@ description: Behave on a website the way that site asked — do not scrape the p
 
 # Agent Web Router — the skill
 
-You are about to visit a website as an agent. Do not start by opening your browser or
-scraping the page. A site can open up to three ways in for agents, and which one you take is
-decided by two things: **what you have on hand**, and **what the site says it prefers**. This
-skill finds and checks those ways in; the browser you already have and the key you already
+You are about to visit a website as an agent. Do not start by scraping the page.
+A site may have published an Agent Card, an MCP server, or WebMCP — different
+jobs, not three substitutes. Which published job you take is decided by two
+things: **what the visit is**, and **what the site says it prefers**. This skill
+finds and checks those; the browser you already have and the key you already
 hold do the visiting.
 
 | way | what it is | you need |
