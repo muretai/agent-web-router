@@ -1,22 +1,24 @@
 ---
 name: agent-web-router
-description: Behave on a website the way that site asked — do not scrape the page. Find the Agent Card (any A2A door), a declared MCP server, or WebMCP tools in the page. MCP and WebMCP are different. If no person is in the tab and the site published a Card or MCP, take that. Check it is really the site's. Follow a handoff only where the card points. Not tied to one vendor's door.
+description: Behave on a website as an agent — find the Agent Card (any A2A door), check it is really the site's, and knock. WebMCP is the existing page when a person is already there, not that visit. MCP is a tool account, a different purpose. Follow a handoff only where the card points. Not tied to one vendor's door.
 ---
 
 # Agent Web Router — the skill
 
-You are about to visit a website as an agent. Do not start by scraping the page.
-A site may have published an Agent Card, an MCP server, or WebMCP — different
-jobs, not three substitutes. Which published job you take is decided by two
-things: **what the visit is**, and **what the site says it prefers**. This skill
-finds and checks those; the browser you already have and the key you already
-hold do the visiting.
+You are about to visit a website as an agent. The agent-native visit is the
+Agent Card. Find it, check it is theirs, knock. The browser you already have
+and the key you already hold do the visiting.
 
-| way | what it is | you need |
+WebMCP is not that visit: tools on the existing page, when a person is already
+there. MCP is not that visit: a tool account behind a token, a different
+purpose. The command line will mention them when they are there. Do not treat
+either as another Agent Card.
+
+| | what it is | you need |
 |---|---|---|
-| **page** | WebMCP tools in the page (`<form toolname=…>` or `document.modelContext`) | a browser — yours, or the person's |
-| **mcp** | an MCP server the site declares at `/.well-known/mcp.json` | a token for it |
 | **card** | the Agent Card at `/.well-known/agent-card.json` and the door it names: POST one signed message, get a signed reply | your own Ed25519 key — nothing else |
+| **page** | WebMCP — not the agent-native visit; the existing page | a person already in the tab |
+| **mcp** | MCP — not the agent-native visit; a tool account | a token for that server |
 
 ## With the command line (preferred)
 

@@ -1,14 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 300" role="img">
-  <title>Help your agent behave on the site it visits.</title>
+  <title>The agent-native visit is the Agent Card.</title>
   <rect width="740" height="300" fill="#fafafa"/>
-  <text x="24" y="26" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#666">Card, WebMCP and MCP are different jobs. They coexist. They are not three substitutes.</text>
-  <rect x="20" y="40" width="700" height="168" rx="10" fill="#fff" stroke="#111"/>
-  <text x="370" y="72" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" fill="#111">Help your agent behave on the site it visits</text>
-  <text x="370" y="104" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#555">Find the door. Check it is theirs. Take the one that fits this visit.</text>
-  <text x="370" y="140" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#111">Agent Card - agent-native</text>
-  <text x="370" y="164" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#111">WebMCP - person, existing page</text>
-  <text x="370" y="188" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#111">MCP server - tool account, other job</text>
-  <text x="370" y="244" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#111">Do not follow a pointer to someone else's door.</text>
-  <text x="370" y="276" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#111">or exit 2</text>
+  <text x="24" y="26" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#666">Help your agent behave on the site it visits.</text>
+  <rect x="20" y="40" width="700" height="140" rx="10" fill="#111"/>
+  <text x="370" y="78" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="700" fill="#fff">Agent Card</text>
+  <text x="370" y="108" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="#ddd">the agent-native visit</text>
+  <text x="370" y="148" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="#fff">Find it. Check it is theirs. Knock.</text>
+  <text x="370" y="214" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#555">WebMCP is the existing page, when a person is already there. Not this visit.</text>
+  <text x="370" y="240" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#555">MCP is a tool account behind a token. A different purpose. Not this visit.</text>
+  <text x="370" y="278" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#111">Do not follow a pointer to someone else's door.</text>
 </svg>

@@ -21,50 +21,35 @@ It does not follow a pointer to someone else's door.
 
 ## What this is
 
-A site may have published an Agent Card (any A2A door, not one vendor), an MCP
-server, or WebMCP tools in the page. Those are different jobs, often named
-together. This package reads what is there, checks it belongs to the origin you
-dialled, and takes the one that fits what you hold — a key, a token, a person
-in the tab, a browser. If there is nothing to take, it says why and exits 2.
+The agent-native visit is the **Agent Card** (any A2A door, not one vendor).
+This package finds that card, checks it belongs to the origin you dialled, and
+knocks: one signed POST, a signed reply. If there is no card to take, it says
+why and exits 2.
 
 Opening the page first is how an agent follows a rewritten address — carrying
-*your* signed identity — to someone else's door. If nobody is in the tab and
-the site prepared a card or an MCP server, take that. Do not scrape the page
-just because WebMCP exists.
+*your* signed identity — to someone else's door.
+
+WebMCP is not that visit. It is tools on the existing page, for a person already
+in the tab. MCP is not that visit either. It is a tool account behind a token —
+a different purpose. The probe will mention both when they are there. It does
+not treat them as another Agent Card.
 
 | | |
 |---|---|
-| **Who installs this** | People whose *agent* visits sites it did not build — harness authors, IDE agents, a crawler that should knock instead of scrape. |
-| **Not for** | Website owners putting up a door or putting tools in the page. This package does not run on the site. |
+| **Who installs this** | People whose *agent* visits sites it did not build — harness authors, IDE agents. |
+| **Not for** | Website owners putting up a door. This package does not run on the site. |
 | **The problem** | Opening the page first can take the agent's signed identity to someone else's door. |
 
-Card, WebMCP and MCP are different jobs a site may have published. They
-coexist. They are not three substitutes. This package takes the one that
-fits the visit:
-
-![Help your agent behave on the site it visits.](diagrams/behave.png)
-
-| published | job | you need | what remains |
-|---|---|---|---|
-| **card** — the Agent Card and the A2A door it names | an agent-native visit | the agent's own key, a `did:key` | a counterparty the site can reach again |
-| **page** — WebMCP tools in the page | the existing page | a person in the tab | nothing; it closes with the tab |
-| **mcp** — an MCP server the site declares | a tool account | a token | an account on that server |
-
-Which published job to take depends on **what the visit is**, and that is the
-decision this tool makes:
-
-- **a person is in the tab** → WebMCP (the page). It is theirs; its tools run in their session.
-- **the agent is alone** → the Agent Card first (its key is all it needs), the MCP server if
-  it holds a token. WebMCP only if it carries a browser of its own — and robots.txt may
-  still refuse a headless visit to the page.
+![The agent-native visit is the Agent Card.](diagrams/behave.png)
 
 The router does four things and nothing else: **probe** an origin (GET only — it never runs
-page script, never opens a browser), **route** by what is on hand, **check a handoff** — a tool
+page script, never opens a browser), **route** (the card when the visit is the agent's;
+the page only when a person is already there), **check a handoff** — a tool
 result that says "the rest of this happens at the card / on this page / on this server" —
 against the site's own card, and **knock**: POST one signed A2A `message/send` at the URL the
 card names, with a key the agent already holds, and verify the signed reply. It does not
-browse, scrape, or mint keys: when the page is the way in, it hands the page to the browser
-your harness already has.
+browse, scrape, or mint keys: when a person is already on the page, it hands the page to the
+browser your harness already has.
 
 Zero dependencies. Node ≥ 20. MIT. Status: **0.5.0** — `npm i @muretai/agent-web-router`, or run it directly: `npx @muretai/agent-web-router probe <url>`.
 
