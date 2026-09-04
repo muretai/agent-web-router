@@ -1,23 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 340" role="img">
-  <title>A scrape is a bad visit. Use what the site published.</title>
-  <rect width="740" height="340" fill="#fafafa"/>
-  <text x="24" y="26" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#666">The comparison is a scrape against a well-behaved visit. Not Card vs MCP vs WebMCP.</text>
-  <rect x="20" y="40" width="340" height="200" rx="10" fill="#111"/>
-  <text x="190" y="72" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" fill="#fff">Scrape the page</text>
-  <text x="190" y="108" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#ddd">a badly behaved agent</text>
-  <text x="190" y="142" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#bbb">dumps the HTML</text>
-  <text x="190" y="166" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#bbb">guesses from markup</text>
-  <text x="190" y="190" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#bbb">follows a rewritten address</text>
-  <text x="190" y="220" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#888">not a visit the site asked for</text>
-  <rect x="380" y="40" width="340" height="200" rx="10" fill="#fff" stroke="#111"/>
-  <text x="550" y="72" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" fill="#111">What the site published</text>
-  <text x="550" y="108" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#555">different jobs; they coexist</text>
-  <text x="550" y="142" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#111">Agent Card - agent-native</text>
-  <text x="550" y="166" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#111">WebMCP - person, existing page</text>
-  <text x="550" y="190" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#111">MCP server - tool account, other job</text>
-  <text x="550" y="220" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#666">not three substitutes for one visit</text>
-  <text x="370" y="274" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#111">Find what was published. Check it is theirs. Take the one that fits.</text>
-  <text x="370" y="300" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#555">Do not scrape. Do not follow a pointer to someone else's door.</text>
-  <text x="370" y="324" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#111">or exit 2</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 300" role="img">
+  <title>Help your agent behave on the site it visits.</title>
+  <rect width="740" height="300" fill="#fafafa"/>
+  <text x="24" y="26" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#666">Card, WebMCP and MCP are different jobs. They coexist. They are not three substitutes.</text>
+  <rect x="20" y="40" width="700" height="168" rx="10" fill="#fff" stroke="#111"/>
+  <text x="370" y="72" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" fill="#111">Help your agent behave on the site it visits</text>
+  <text x="370" y="104" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#555">Find the door. Check it is theirs. Take the one that fits this visit.</text>
+  <text x="370" y="140" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#111">Agent Card - agent-native</text>
+  <text x="370" y="164" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#111">WebMCP - person, existing page</text>
+  <text x="370" y="188" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#111">MCP server - tool account, other job</text>
+  <text x="370" y="244" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#111">Do not follow a pointer to someone else's door.</text>
+  <text x="370" y="276" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#111">or exit 2</text>
 </svg>

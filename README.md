@@ -6,8 +6,7 @@
 **Help your agent behave on the websites it visits.**
 
 It finds the door that site published, checks it is really theirs, and knocks.
-It does not scrape the page, and it does not follow a pointer to someone
-else's door.
+It does not follow a pointer to someone else's door.
 
 ## Contents
 
@@ -37,14 +36,13 @@ just because WebMCP exists.
 |---|---|
 | **Who installs this** | People whose *agent* visits sites it did not build — harness authors, IDE agents, a crawler that should knock instead of scrape. |
 | **Not for** | Website owners putting up a door or putting tools in the page. This package does not run on the site. |
-| **The problem** | A scrape is a bad visit. Opening the page first can take the agent's signed identity to someone else's door. |
+| **The problem** | Opening the page first can take the agent's signed identity to someone else's door. |
 
-The comparison is not Card vs MCP vs WebMCP. Those are different jobs a site
-may have published, and a site that prepared all three should keep all three.
-The comparison is a scrape — a badly behaved visit — against using what the
-site published:
+Card, WebMCP and MCP are different jobs a site may have published. They
+coexist. They are not three substitutes. This package takes the one that
+fits the visit:
 
-![A scrape is a bad visit. Use what the site published.](diagrams/visit.png)
+![Help your agent behave on the site it visits.](diagrams/behave.png)
 
 | published | job | you need | what remains |
 |---|---|---|---|

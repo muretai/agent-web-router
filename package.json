@@ -1,7 +1,7 @@
 {
   "name": "@muretai/agent-web-router",
   "version": "0.5.0",
-  "description": "Help your agent behave on the websites it visits. This package finds the door that site published, checks it is really theirs, and knocks — it does not scrape the page, and it does not follow a pointer to someone else's door. Zero dependencies.",
+  "description": "Help your agent behave on the websites it visits. This package finds the door that site published, checks it is really theirs, and knocks. It does not follow a pointer to someone else's door. Zero dependencies.",
   "type": "module",
   "main": "agent-web-router.mjs",
   "exports": {
