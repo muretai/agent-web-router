@@ -1,6 +1,22 @@
 # Agent Web Router
 
+[![npm](https://img.shields.io/npm/v/@muretai/agent-web-router.svg?label=npm)](https://www.npmjs.com/package/@muretai/agent-web-router)
+[![LICENSE](https://img.shields.io/badge/LICENSE-MIT-blue.svg)](LICENSE)
+
 **Your agent is about to visit a website. Don't open the browser yet.**
+
+## Contents
+
+- [What this is](#what-this-is)
+- [Try it](#try-it)
+- [Probe](#probe)
+- [Knock](#knock)
+- [Handoff](#handoff)
+- [Conduct](#conduct)
+- [Library](#library)
+- [Any A2A door](#any-a2a-door-not-one-vendor)
+
+## What this is
 
 Find how that site wants to be entered. It may offer three different doors:
 an Agent Card (any A2A door, not one vendor), an MCP server, or WebMCP tools
@@ -116,7 +132,9 @@ probe/knock traces, without letting prose override the interceptor, is
 `npx @muretai/agent-web-router probe <url> --json | npm run distill:record`
 appends *your* probe to `var/traces.jsonl`. Nothing is uploaded.
 
-## The rules a probe enforces
+## Probe
+
+### The rules a probe enforces
 
 These are the checks that make the `card` route safe to take. Each is tested by actually
 attempting the attack in `test/`.
@@ -141,7 +159,7 @@ attempting the attack in `test/`.
   tab is not a crawler, so their page route is untouched. The door is for agents and is not
   closed by robots.txt.
 
-## The site designs the order
+### The site designs the order
 
 The order above is only the router's **default**. Which way a visitor should take first is
 the site's design: whether a keyless agent should read on the page and become a counterparty
@@ -231,7 +249,7 @@ cat result.json | node bin/agent-web-router.mjs handoff - --origin https://shop.
 
 Exit 0 when every entry is accepted, 2 when anything is refused or there is nothing to follow.
 
-## Conduct — what the router refuses to take from a site
+## Conduct
 
 Three rules run through everything above, each pinned by a test that attempts the opposite
 (spec §7b):
@@ -252,7 +270,7 @@ Why these are in the router and not left to the model: a paper that measured it
 anywhere from 0 % to 100 % depending on the model, while a harness-level interceptor stopped
 120 of 120. For these three cases, the router is that interceptor.
 
-## What it does not do, and why
+### What it does not do, and why
 
 It never mints a key, and it never browses. A key is an identity, and where it lives — per
 visit, per machine, per site — decides whether the site sees one returning visitor or a
