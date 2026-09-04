@@ -32,7 +32,7 @@ against the site's own card, and **knock**: POST one signed message at the door 
 agent already holds, and verify the signed reply. It does not browse, scrape, or mint keys:
 when the page is the way in, it hands the page to the browser your harness already has.
 
-Zero dependencies. Node ≥ 20. MIT. Status: **0.5.0, not yet on npm.**
+Zero dependencies. Node ≥ 20. MIT. Status: **0.5.0** — `npm i @muretai/agent-web-router`, or run it directly: `npx @muretai/agent-web-router probe <url>`.
 
 ## Try it
 
