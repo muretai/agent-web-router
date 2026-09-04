@@ -44,7 +44,7 @@ may have published, and a site that prepared all three should keep all three.
 The comparison is a scrape — a badly behaved visit — against using what the
 site published:
 
-![A scrape dumps the page. A well-behaved visit uses what the site published: an Agent Card (agent-native), WebMCP (a person on the existing page), or an MCP server (a tool account — a different job).](diagrams/ways.svg)
+<img src="diagrams/ways.svg" alt="A scrape is a bad visit. Use what the site published." width="740" />
 
 | published | job | you need | what remains |
 |---|---|---|---|
