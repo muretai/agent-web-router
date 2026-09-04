@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 320" role="img" aria-labelledby="t d">
+  <title id="t">Three ways in: Agent Card, MCP, and WebMCP</title>
+  <desc id="d">MCP is a server over HTTP. WebMCP is tools in the page and needs a browser. When no person is in the tab, take the Agent Card or the MCP server if the site published them. Do not scrape the page.</desc>
+  <rect width="740" height="320" fill="#fafafa"/>
+  <text x="24" y="26" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#666">A site may publish all three. They coexist. They are not the same.</text>
+  <rect x="20" y="40" width="228" height="88" rx="8" fill="#fff" stroke="#111"/>
+  <text x="134" y="70" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" fill="#111">Agent Card</text>
+  <text x="134" y="90" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#555">A2A door over HTTP</text>
+  <text x="134" y="110" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#555">you hold a key</text>
+  <rect x="256" y="40" width="228" height="88" rx="8" fill="#fff" stroke="#111"/>
+  <text x="370" y="70" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" fill="#111">MCP server</text>
+  <text x="370" y="90" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#555">tool server over HTTP</text>
+  <text x="370" y="110" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#555">you hold a token</text>
+  <rect x="492" y="40" width="228" height="88" rx="8" fill="#fff" stroke="#111"/>
+  <text x="606" y="70" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" fill="#111">WebMCP</text>
+  <text x="606" y="90" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#555">tools in the page</text>
+  <text x="606" y="110" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#555">a browser tab</text>
+  <rect x="20" y="154" width="700" height="70" rx="8" fill="#111"/>
+  <text x="370" y="184" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#fff">No person in the tab? Take Card and/or MCP.</text>
+  <text x="370" y="206" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#ddd">Do not scrape the page. WebMCP waits for a browser.</text>
+  <text x="370" y="256" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#666">Person in the tab? The page (WebMCP) is theirs.</text>
+  <text x="370" y="292" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#111">probe, check the origin, pick one - or exit 2</text>
+</svg>

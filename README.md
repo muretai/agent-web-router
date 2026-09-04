@@ -1,36 +1,56 @@
 # Agent Web Router
 
-**Find the agent-facing side of a website, and pick the way in.**
+**Your agent is about to visit a website. Don't open the browser yet.**
 
-Your IDE or agent harness already has a browser. This is not another one. Before that
-browser is opened — and often instead of it — the router finds what a site put up *for
-agents*: the door (an Agent Card and the Agent Entry it names), a declared MCP server, the
-tools registered in the page, and the signposts around them. It checks that what it found is
-really the site's, and orders the ways in by what the agent has on hand. When the door is the
-way in and the agent holds a key, it knocks — one signed message, one signed reply, verified.
-Browsing stays the harness's browser's job, and the key stays the agent's own.
+The site may have published an **Agent Card**, an **MCP server**, **WebMCP** tools in the
+page — or none. MCP and WebMCP are often named together. They are not the same thing.
 
-A site can be entered three ways, and they are not rivals:
+| | what it is | needs | no person in the tab |
+|---|---|---|---|
+| **Agent Card** | an A2A door over HTTP | your key | **take it** |
+| **MCP** | a tool *server* over HTTP (`/.well-known/mcp.json`) | a token | **take it** |
+| **WebMCP** | tools *in the page* (`<form toolname>` / `document.modelContext`) | a browser tab | do not scrape; wait for a browser, or take Card/MCP |
+
+This package finds what is actually there, checks it belongs to the origin you dialled, and
+picks a way in from what *you* hold. If the site prepared an agent-native way (Card and/or
+MCP) and the agent is alone, take that way. Do not open a headless browser at the page just
+because WebMCP exists — that visit is a crawl.
+
+A site that published only a card still works. Only MCP still works. Only WebMCP still
+works. If there is nothing to take, it says why and exits 2.
+
+| | |
+|---|---|
+| **Who installs this** | People whose *agent* visits sites it did not build — harness authors, IDE agents, a crawler that should knock instead of scrape. |
+| **Not for** | Website owners putting up a door or registering WebMCP tools. This package does not run on the site. |
+| **The problem** | Opening the page first is how an agent follows a rewritten `to` — with *your* signed identity — to someone else's door. The site already said how it wants to be entered. Read that, then stop. |
+
+![MCP is a server. WebMCP is tools in the page. With no person in the tab, take the Agent Card or MCP — do not scrape WebMCP.](diagrams/ways.svg)
+
+A site can be entered three ways, and they are not rivals — a site that prepared all three
+should keep all three:
 
 | way | where it runs | acts as | what remains |
 |---|---|---|---|
 | **page** — WebMCP tools in the page | a browser tab | the browser's session; headless, nobody | nothing; it closes with the tab |
 | **mcp** — an MCP server the site declares | over HTTP | whoever the token names | an account on that server |
-| **card** — the Agent Card and the door it names (Agent Entry) | over HTTP | the agent's own key, a `did:key` | a counterparty the site can reach again |
+| **card** — the Agent Card and the A2A door it names | over HTTP | the agent's own key, a `did:key` | a counterparty the site can reach again |
 
 Which one to take depends on **what the agent has on hand**, and that is the whole decision
 this tool makes:
 
-- **a person is in the tab** → the page. It is theirs; its tools run in their session.
-- **the agent is alone** → the door first (its key is all it needs), the server if it holds a
-  token, the page only if it carries a browser of its own.
+- **a person is in the tab** → WebMCP (the page). It is theirs; its tools run in their session.
+- **the agent is alone** → the Agent Card first (its key is all it needs), the MCP server if
+  it holds a token. WebMCP only if it carries a browser of its own — and robots.txt may
+  still refuse a headless visit to the page.
 
 The router does four things and nothing else: **probe** an origin (GET only — it never runs
 page script, never opens a browser), **route** by what is on hand, **check a handoff** — a tool
-result that says "the rest of this happens at the door / on this page / on this server" —
-against the site's own card, and **knock**: POST one signed message at the door with a key the
-agent already holds, and verify the signed reply. It does not browse, scrape, or mint keys:
-when the page is the way in, it hands the page to the browser your harness already has.
+result that says "the rest of this happens at the card / on this page / on this server" —
+against the site's own card, and **knock**: POST one signed A2A `message/send` at the URL the
+card names, with a key the agent already holds, and verify the signed reply. It does not
+browse, scrape, or mint keys: when the page is the way in, it hands the page to the browser
+your harness already has.
 
 Zero dependencies. Node ≥ 20. MIT. Status: **0.5.0** — `npm i @muretai/agent-web-router`, or run it directly: `npx @muretai/agent-web-router probe <url>`.
 
@@ -57,7 +77,7 @@ the MCP server card at `/.well-known/mcp.json`
 the **imperative** API (`document.modelContext`) is referenced — the imperative tool list is
 only observable by running the page, so the probe never claims it.
 
-Output, for a site that runs an Agent Entry and has a couple of declarative tools:
+Output, for a site that published a card and a couple of declarative tools:
 
 ```
 agent-web-router 0.5.0 · https://shop.example
@@ -77,7 +97,7 @@ excluded
   mcp   no MCP server card (/.well-known/mcp.json answered 404)
   page  the page has tools but you carry no browser; 2 declarative form(s) name an action and could be submitted as plain HTTP
 
-knock: POST https://shop.example/  to did:key:z6MkExample…  sign contextId,from,messageId,text,timestamp,to  how-to https://shop.example/agent-entry/how-to
+knock: POST https://shop.example/  to did:key:z6MkExample…  sign contextId,from,messageId,text,timestamp,to  how-to https://shop.example/how-to
 ```
 
 Every way appears in exactly one of `route` and `excluded`, so "why not X" is always
@@ -181,9 +201,9 @@ To continue a conversation, pass the `contextId` a verified reply carried back o
 knock with `--context <id>` — it is one of the six signed fields, so the door's verifier
 sees it under your signature, not beside it. The printed reply names the id.
 
-The signing bytes are checked against the Agent Entry conformance vectors in `test/`
+The signing bytes are checked against the A2A door conformance vectors in `test/`
 (canonical JSON, the six-field payload, did:key derivation, the envelopes a door must
-refuse) — two runtimes, one contract.
+refuse) — any site-side runtime that answers the same contract, one set of bytes.
 
 ## Handoff
 
@@ -264,12 +284,16 @@ per-request timeout (default 8 s) and a shared wall-clock deadline (default 30 s
 capped (256 KiB for a card, 1 MiB for the page) and abandoned at the cap, never read to the
 end; over the cap is a finding, not a crash.
 
-## Relation to Agent Entry
+## Any A2A door — not one vendor
 
-[Agent Entry](https://github.com/muretai/agent-entry) is the **site's** side: one file that
-makes a website answer a signed stranger in the same request. Agent Web Router is the
-**visitor's** side: how an agent decides which of a site's doors to use, and how it follows a
-handoff without being sent somewhere the site never named. They share one identity model — the
-`did` in the card is the `to` in the envelope — and either works without the other.
+`knock` POSTs A2A `message/send` to the URL the **card** names. That door can be any
+implementation that answers the same contract. This package does not import a site-side
+runtime, does not require one particular door on the origin, and still routes an MCP server
+or WebMCP in the page when there is no card at all.
+
+[Agent Entry](https://github.com/muretai/agent-entry) is one door a *site owner* can install.
+A visitor who wants a router can install this. **Neither install implies the other.** A site
+running something else — or only MCP, or only WebMCP — is still a site this router can
+probe.
 
 Specification draft: [`spec/v0.md`](spec/v0.md). Tests: `npm test`.

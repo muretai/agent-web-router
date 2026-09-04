@@ -8,10 +8,11 @@
  *          logged into that browser; headless, as nobody. Nothing remains when the tab closes.
  *   mcp    an MCP server the site declares (`/.well-known/mcp.json`, SEP-2127 — a draft at
  *          the time of writing). Runs over HTTP as whoever the token names.
- *   card   the Agent Card at `/.well-known/agent-card.json` and the door it names — an
- *          Agent Entry: POST one signed message, get a signed reply in the same response.
- *          Runs as the visitor's own key, a did:key, and needs nothing else. A counterparty
- *          the site can reach again is what remains.
+ *   card   the Agent Card at `/.well-known/agent-card.json` and the A2A door it names:
+ *          POST one signed message/send, get a signed reply in the same response.
+ *          Any implementation of that contract — not one vendor. Runs as the visitor's
+ *          own key, a did:key, and needs nothing else. A counterparty the site can
+ *          reach again is what remains.
  *
  * Which one an agent should take depends on what it has on hand, and that is the whole
  * decision this module makes:

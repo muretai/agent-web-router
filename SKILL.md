@@ -1,6 +1,6 @@
 ---
 name: agent-web-router
-description: Find the agent-facing side of a website before you open a browser — the door (Agent Card + Agent Entry), a declared MCP server, the tools in the page — check it is really the site's, and take the way in that fits what you have on hand and what the site prefers; follow a handoff only where the site's own card points. Use before touching any site you did not build. It never browses or knocks — your browser and your key do that.
+description: Find how a website wants agents to enter before you open a browser — an Agent Card (any A2A door), a declared MCP server, or WebMCP tools in the page. MCP and WebMCP are different. If no person is in the tab and the site published a Card or MCP, take that; do not scrape the page. Check it is really the site's. Follow a handoff only where the card points. Not tied to one vendor's door.
 ---
 
 # Agent Web Router — the skill
