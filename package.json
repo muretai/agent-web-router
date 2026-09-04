@@ -14,6 +14,7 @@
     "agent-web-router.mjs",
     "bin/",
     "spec/",
+    "scripts/distill/",
     "SKILL.md",
     "LICENSE",
     "README.md"
@@ -23,7 +24,10 @@
   },
   "scripts": {
     "test": "node --test",
-    "probe": "node bin/agent-web-router.mjs probe"
+    "probe": "node bin/agent-web-router.mjs probe",
+    "distill": "node scripts/distill/loop.mjs",
+    "distill:record": "node scripts/distill/record.mjs",
+    "distill:measure": "node scripts/distill/measure.mjs"
   },
   "keywords": [
     "ai-agent",

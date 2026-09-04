@@ -1,3 +1,7 @@
 node_modules/
 *.log
 .DS_Store
+
+# Local distill loop — traces and proposed hunks stay on this machine
+var/
+generated/

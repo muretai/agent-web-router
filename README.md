@@ -93,7 +93,13 @@ every convention. None of them is a way in, so none of them creates a route.
 
 **The skill.** [`SKILL.md`](SKILL.md) is the same procedure written for an agent to follow by
 hand — the GETs, the checks, the refusals — for a harness that cannot run Node. The command
-line is the version that cannot get the refusals wrong.
+line is the version that cannot get the refusals wrong. Distilling those refusals from
+probe/knock traces, without letting prose override the interceptor, is
+[`spec/skill-distill.md`](spec/skill-distill.md). On this machine only:
+`npm run distill` labels the fixtures with `route` / `checkHandoff`, writes
+`generated/rules.json`, and measures whether the rules beat first-match.
+`npx @muretai/agent-web-router probe <url> --json | npm run distill:record`
+appends *your* probe to `var/traces.jsonl`. Nothing is uploaded.
 
 ## The rules a probe enforces
 

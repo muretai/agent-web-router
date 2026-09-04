@@ -43,6 +43,7 @@ to *discover* — only to *use* the page, and only when a person or you can hold
 1. **Read the card.** `GET /.well-known/agent-card.json` (fall back to `/.well-known/agent.json`).
    Note `did`, `url`, `skills`, and the `securitySchemes` entry that lists `signedFields`
    (it may sit under `securitySchemes.<name>.agentEntry`) — that entry is the door's contract.
+   If the card names no `did`, there is no door — a reply could not be verified.
 2. **Check the card is this site's.** The card must have been served by the origin you
    dialled (a redirect elsewhere is a substitution), and its `url` must be on that origin.
    If not, there is no door here.

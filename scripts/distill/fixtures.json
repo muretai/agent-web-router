@@ -1,0 +1,128 @@
+{
+  "comment": "Labeled by calling route()/checkHandoff at distill time. Placeholders only (RFC 2606 / docs DIDs).",
+  "cases": [
+    {
+      "id": "good-door",
+      "split": "train",
+      "kind": "route",
+      "onHand": { "key": true },
+      "ways": {
+        "card": { "found": true, "did": "did:key:z6MkExampleDooraaaaaaaaaaaaaaaaaaaaaaaaaaa", "url": "https://shop.example/", "originBound": true, "signed": true, "skills": [], "prefer": null },
+        "mcp": { "declared": false },
+        "page": { "reachable": false, "declarativeTools": [], "imperativeHint": null }
+      }
+    },
+    {
+      "id": "no-did",
+      "split": "train",
+      "kind": "route",
+      "onHand": { "key": true },
+      "ways": {
+        "card": { "found": true, "did": null, "url": "https://shop.example/", "originBound": true, "signed": true, "skills": [], "prefer": null },
+        "mcp": { "declared": false },
+        "page": { "reachable": false, "declarativeTools": [], "imperativeHint": null }
+      }
+    },
+    {
+      "id": "foreign-url",
+      "split": "train",
+      "kind": "route",
+      "onHand": { "key": true },
+      "ways": {
+        "card": { "found": true, "did": "did:key:z6MkExampleDooraaaaaaaaaaaaaaaaaaaaaaaaaaa", "url": "https://other.example/", "originBound": false, "signed": true, "skills": [], "prefer": null },
+        "mcp": { "declared": false },
+        "page": { "reachable": false, "declarativeTools": [], "imperativeHint": null }
+      }
+    },
+    {
+      "id": "bad-sig",
+      "split": "train",
+      "kind": "route",
+      "onHand": { "key": true },
+      "ways": {
+        "card": { "found": true, "did": "did:key:z6MkExampleDooraaaaaaaaaaaaaaaaaaaaaaaaaaa", "url": "https://shop.example/", "originBound": true, "signed": false, "skills": [], "prefer": null },
+        "mcp": { "declared": false },
+        "page": { "reachable": false, "declarativeTools": [], "imperativeHint": null }
+      }
+    },
+    {
+      "id": "mcp-foreign",
+      "split": "train",
+      "kind": "route",
+      "onHand": { "token": true, "key": true },
+      "ways": {
+        "card": { "found": false },
+        "mcp": { "declared": true, "url": "https://other.example/mcp", "originBound": false, "openAccess": false },
+        "page": { "reachable": false, "declarativeTools": [], "imperativeHint": null }
+      }
+    },
+    {
+      "id": "handoff-other-did",
+      "split": "train",
+      "kind": "handoff",
+      "origin": "https://shop.example",
+      "card": { "did": "did:key:z6MkExampleDooraaaaaaaaaaaaaaaaaaaaaaaaaaa", "url": "https://shop.example/" },
+      "result": { "_meta": { "handoff": { "v": 1, "next": [{ "kind": "dm", "to": "did:key:z6MkExampleOtheraaaaaaaaaaaaaaaaaaaaaaaaaa" }] } } }
+    },
+    {
+      "id": "good-door-holdout",
+      "split": "holdout",
+      "kind": "route",
+      "onHand": { "key": true },
+      "ways": {
+        "card": { "found": true, "did": "did:key:z6MkExampleDoorbbbbbbbbbbbbbbbbbbbbbbbbbbb", "url": "https://studio.example/", "originBound": true, "signed": "absent", "skills": [], "prefer": null },
+        "mcp": { "declared": false },
+        "page": { "reachable": false, "declarativeTools": [], "imperativeHint": null }
+      }
+    },
+    {
+      "id": "no-did-holdout",
+      "split": "holdout",
+      "kind": "route",
+      "onHand": { "key": true },
+      "ways": {
+        "card": { "found": true, "did": "", "url": "https://studio.example/", "originBound": true, "signed": true, "skills": [], "prefer": null },
+        "mcp": { "declared": false },
+        "page": { "reachable": false, "declarativeTools": [], "imperativeHint": null }
+      }
+    },
+    {
+      "id": "foreign-url-holdout",
+      "split": "holdout",
+      "kind": "route",
+      "onHand": { "key": true },
+      "ways": {
+        "card": { "found": true, "did": "did:key:z6MkExampleDoorbbbbbbbbbbbbbbbbbbbbbbbbbbb", "url": "https://evil.example/", "originBound": false, "signed": true, "skills": [], "prefer": null },
+        "mcp": { "declared": false },
+        "page": { "reachable": false, "declarativeTools": [], "imperativeHint": null }
+      }
+    },
+    {
+      "id": "bad-sig-holdout",
+      "split": "holdout",
+      "kind": "route",
+      "onHand": { "key": true },
+      "ways": {
+        "card": { "found": true, "did": "did:key:z6MkExampleDoorbbbbbbbbbbbbbbbbbbbbbbbbbbb", "url": "https://studio.example/", "originBound": true, "signed": false, "skills": [], "prefer": null },
+        "mcp": { "declared": false },
+        "page": { "reachable": false, "declarativeTools": [], "imperativeHint": null }
+      }
+    },
+    {
+      "id": "handoff-other-did-holdout",
+      "split": "holdout",
+      "kind": "handoff",
+      "origin": "https://studio.example",
+      "card": { "did": "did:key:z6MkExampleDoorbbbbbbbbbbbbbbbbbbbbbbbbbbb", "url": "https://studio.example/" },
+      "result": { "_meta": { "handoff": { "v": 1, "next": [{ "kind": "dm", "to": "did:key:z6MkExampleMalloryaaaaaaaaaaaaaaaaaaaaaaa" }] } } }
+    },
+    {
+      "id": "handoff-same-did-holdout",
+      "split": "holdout",
+      "kind": "handoff",
+      "origin": "https://studio.example",
+      "card": { "did": "did:key:z6MkExampleDoorbbbbbbbbbbbbbbbbbbbbbbbbbbb", "url": "https://studio.example/" },
+      "result": { "_meta": { "handoff": { "v": 1, "next": [{ "kind": "dm", "to": "did:key:z6MkExampleDoorbbbbbbbbbbbbbbbbbbbbbbbbbbb" }] } } }
+    }
+  ]
+}
