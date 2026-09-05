@@ -56,7 +56,7 @@ card names, with a key the agent already holds, and verify the signed reply. It 
 browse, scrape, or mint keys: when a person is already on the page, it hands the page to the
 browser your harness already has.
 
-Zero dependencies. Node ≥ 20. MIT. Status: **0.5.0** — `npm i @muretai/agent-web-router`, or run it directly: `npx @muretai/agent-web-router probe <url>`.
+Zero dependencies. Node ≥ 20. MIT. Status: **0.6.0** — `npm i @muretai/agent-web-router`, or run it directly: `npx @muretai/agent-web-router probe <url>`.
 
 ## Try it
 
@@ -84,7 +84,7 @@ only observable by running the page, so the probe never claims it.
 Output, for a site that published a card and a couple of declarative tools:
 
 ```
-agent-web-router 0.5.0 · https://shop.example
+agent-web-router 0.6.0 · https://shop.example
 
 ways in
   card   did:key:z6MkExample…
@@ -230,10 +230,11 @@ honour. The legacy `{ "muretai": { "v": 1, "action": "dm", "to": …, "connect":
 
 **The one rule that makes a handoff safe to follow:** a continuation that *leaves the origin*
 is honoured only if the origin's own card names where it points. A `to` must equal the card's
-`did`; a URL must sit on the dialled origin or on the origin the card's `url` names; a `ui`
-entry is never opened without a person. Why: a page-authored `to` is rewritable by any
-third-party script on that page, and a rewritten `to` sends the visitor's signed message — and
-the account it opens — to another door. The card is the origin's own statement; the page is not.
+`did`; a URL without `to` must sit on the origin dialled for this decision; a `ui` entry is
+never opened without a person. Even a usable card record from another probe cannot extend
+that origin. Why: a page-authored `to` is rewritable by any third-party script on that page,
+and a rewritten `to` sends the visitor's signed message — and the account it opens — to
+another door. The card is the origin's own statement; the page is not.
 
 ```
 node bin/agent-web-router.mjs handoff result.json --origin https://shop.example
@@ -275,20 +276,25 @@ the recipient DID, the six signed fields and the how-to, lifted from the card's 
 ## Library
 
 ```js
-import { probe, route, parseHandoff, checkHandoff, describeKnock } from '@muretai/agent-web-router';
+import { probe, route, parseHandoff, checkHandoff, usableCard, describeKnock } from '@muretai/agent-web-router';
 
 const result = await probe('https://shop.example');                 // GETs only
 const { routes, excluded } = route(result.ways, { person: false, browser: false, token: false, key: true });
-const knock = describeKnock(result.ways.card.card);                  // what to POST, for the key holder
+const card = usableCard(result.ways.card);                           // null when the probe refused it
+const knock = card ? describeKnock(card) : null;                     // what to POST, for the key holder
 
 const handoff = parseHandoff(toolResult);                            // null when malformed (fail closed)
-const { accepted, refused } = checkHandoff(handoff, { origin: 'https://shop.example', card: result.ways.card.card });
+const { accepted, refused } = checkHandoff(handoff, { origin: 'https://shop.example', card: result.ways.card });
 ```
 
 `probe(origin, { fetch, timeoutMs, deadlineMs })` accepts a custom `fetch` for tests, a
 per-request timeout (default 8 s) and a shared wall-clock deadline (default 30 s). Bodies are
 capped (256 KiB for a card, 1 MiB for the page) and abandoned at the cap, never read to the
-end; over the cap is a finding, not a crash.
+end; knock responses are capped at 256 KiB too. Over the cap is a finding, not a crash.
+Pass the complete `ways.card` probe record to `checkHandoff`: a detached raw card has lost
+the signature and origin verdicts that make it safe to vouch for a continuation.
+This is the intentional 0.6 API boundary: 0.5 callers that passed
+`result.ways.card.card` must pass `result.ways.card` instead.
 
 ## Any A2A door — not one vendor
 

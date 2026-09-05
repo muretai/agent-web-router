@@ -35,9 +35,17 @@ export function label(case_) {
     };
   }
   const handoff = parseHandoff(case_.result);
+  const card = case_.card ? {
+    found: true,
+    did: case_.card.did,
+    url: case_.card.url,
+    originBound: true,
+    signed: 'absent',
+    card: case_.card,
+  } : null;
   const { accepted, refused } = checkHandoff(handoff, {
     origin: case_.origin,
-    card: case_.card,
+    card,
   });
   return {
     take: accepted.length > 0 && refused.length === 0,

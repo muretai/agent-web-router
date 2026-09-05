@@ -59,7 +59,7 @@
 
 import { createPrivateKey, createPublicKey, randomUUID, sign as cryptoSign, verify as cryptoVerify } from 'node:crypto';
 
-export const VERSION = '0.5.0';
+export const VERSION = '0.6.0';
 
 export const AGENT_CARD_PATH = '/.well-known/agent-card.json';
 export const AGENT_CARD_PATH_LEGACY = '/.well-known/agent.json';
@@ -83,6 +83,7 @@ const CARD_ENVELOPE_VERSION = 1;
 
 const MAX_CARD_BYTES = 256 * 1024;
 const MAX_HTML_BYTES = 1024 * 1024;
+const MAX_KNOCK_RESPONSE_BYTES = 256 * 1024;
 const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_PROBE_DEADLINE_MS = 30000;
 
@@ -105,7 +106,16 @@ export function canonicalJSON(v) {
   if (typeof v === 'string') return JSON.stringify(v);
   if (Array.isArray(v)) return '[' + v.map(canonicalJSON).join(',') + ']';
   if (typeof v === 'object') {
-    const keys = Object.keys(v).filter((k) => v[k] !== undefined).sort();
+    const compareCodePoints = (a, b) => {
+      const aa = [...a];
+      const bb = [...b];
+      for (let i = 0; i < Math.min(aa.length, bb.length); i++) {
+        const d = aa[i].codePointAt(0) - bb[i].codePointAt(0);
+        if (d !== 0) return d;
+      }
+      return aa.length - bb.length;
+    };
+    const keys = Object.keys(v).filter((k) => v[k] !== undefined).sort(compareCodePoints);
     return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalJSON(v[k])).join(',') + '}';
   }
   throw new TypeError(`canonicalJSON: cannot encode ${typeof v}`);
@@ -180,7 +190,7 @@ function verifyEd25519(pub32, sig, data) {
 export function verifyCardEnvelope(envelope, expectedDid = null) {
   try {
     if (!envelope || typeof envelope !== 'object') return null;
-    if (envelope.typ !== CARD_ENVELOPE_TYPE) return null;
+    if (envelope.v !== CARD_ENVELOPE_VERSION || envelope.typ !== CARD_ENVELOPE_TYPE) return null;
     const { card, ts, sig } = envelope;
     if (!card || typeof card !== 'object' || typeof card.did !== 'string') return null;
     if (!Number.isSafeInteger(ts) || sig == null) return null;
@@ -197,12 +207,43 @@ export function verifyCardEnvelope(envelope, expectedDid = null) {
 // ================================================================ HTTP (GET only, capped)
 
 function safeOrigin(url) {
-  try { return new URL(url).origin; } catch { return null; }
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.origin : null;
+  } catch {
+    return null;
+  }
 }
 
 function isHttpUrl(u) {
   if (typeof u !== 'string') return false;
   try { const p = new URL(u).protocol; return p === 'https:' || p === 'http:'; } catch { return false; }
+}
+
+async function readBodyCapped(res, ctrl, maxBytes) {
+  let buf;
+  if (res.body?.getReader) {
+    const reader = res.body.getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try { ctrl.abort(); } catch { /* already down */ }
+        try { await reader.cancel(); } catch { /* the abort above is authoritative */ }
+        return { ok: false, error: `body over ${maxBytes} bytes` };
+      }
+      chunks.push(Buffer.from(value));
+    }
+    buf = Buffer.concat(chunks);
+  } else {
+    // A caller-supplied fetch with no stream body: buffer, then apply the same cap.
+    buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > maxBytes) return { ok: false, error: `body over ${maxBytes} bytes` };
+  }
+  return { ok: true, text: buf.toString('utf8') };
 }
 
 /** One capped GET. Never throws: a network failure is a finding, not an exception.
@@ -212,6 +253,8 @@ function isHttpUrl(u) {
 async function getCapped(url, { fetchImpl, timeoutMs, maxBytes, accept }) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let status = 0;
+  let responseUrl = url;
   try {
     const res = await fetchImpl(url, {
       method: 'GET',
@@ -219,37 +262,18 @@ async function getCapped(url, { fetchImpl, timeoutMs, maxBytes, accept }) {
       signal: ctrl.signal,
       headers: { accept, 'user-agent': `agent-web-router/${VERSION}` },
     });
-    let buf;
-    if (res.body?.getReader) {
-      const reader = res.body.getReader();
-      const chunks = [];
-      let total = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        total += value.byteLength;
-        if (total > maxBytes) {
-          try { ctrl.abort(); } catch { /* already down */ }
-          return { ok: false, status: res.status, url: res.url, error: `body over ${maxBytes} bytes` };
-        }
-        chunks.push(Buffer.from(value));
-      }
-      buf = Buffer.concat(chunks);
-    } else {
-      // A caller-supplied fetch with no stream body: buffer, then apply the same cap.
-      buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length > maxBytes) {
-        return { ok: false, status: res.status, url: res.url, error: `body over ${maxBytes} bytes` };
-      }
-    }
+    status = res.status;
+    responseUrl = res.url || url;
+    const body = await readBodyCapped(res, ctrl, maxBytes);
+    if (!body.ok) return { ok: false, status, url: responseUrl, error: body.error };
     return {
-      ok: res.ok, status: res.status, url: res.url,
+      ok: res.ok, status, url: responseUrl,
       contentType: res.headers.get('content-type') || '',
       link: res.headers.get('link') || '',
-      text: buf.toString('utf8'),
+      text: body.text,
     };
   } catch (e) {
-    return { ok: false, status: 0, url, error: e?.name === 'AbortError' ? `timeout after ${timeoutMs} ms` : String(e?.message || e) };
+    return { ok: false, status, url: responseUrl, error: e?.name === 'AbortError' ? `timeout after ${timeoutMs} ms` : String(e?.message || e) };
   } finally {
     clearTimeout(timer);
   }
@@ -270,6 +294,10 @@ function parseJSON(text) {
  */
 export function findDeclarativeTools(html) {
   const tools = [];
+  // Neutralize comments before the lightweight tag scan. Preserve their width with a
+  // non-syntax byte: deleting or spacing them could synthesize `<form>` from either
+  // `<fo<!-- -->rm>` or `<form<!-- --> ...>`, neither of which the HTML parser names form.
+  const source = String(html).replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => 'x'.repeat(comment.length));
   const attrRe = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
   const attrsOf = (tag) => {
     const attrs = {};
@@ -280,7 +308,7 @@ export function findDeclarativeTools(html) {
   };
   let m;
   const formRe = /<form\b([^>]*)>/gi;
-  while ((m = formRe.exec(html)) !== null) {
+  while ((m = formRe.exec(source)) !== null) {
     const attrs = attrsOf(m[1]);
     if (attrs.toolname && attrs.tooldescription) {
       tools.push({
@@ -297,7 +325,7 @@ export function findDeclarativeTools(html) {
   // dialect of the same idea. The page's own script handles the call, so a browser is
   // still what runs it; this only lists what is declared.
   const toolRe = /<tool\b([^>]*)>/gi;
-  while ((m = toolRe.exec(html)) !== null) {
+  while ((m = toolRe.exec(source)) !== null) {
     const attrs = attrsOf(m[1]);
     if (attrs.name && attrs.description) {
       tools.push({ dialect: 'voix', name: attrs.name, description: attrs.description, action: null, method: null, autosubmit: false });
@@ -407,13 +435,17 @@ function robotsRuleMatches(rule, path) {
 /** true when `name` (or `*`) may fetch `path`; `null` when robots.txt says nothing about it. */
 export function robotsAllows(parsed, name, path = '/') {
   const lower = String(name).toLowerCase();
-  const group = parsed.groups.find((g) => g.agents.includes(lower)) ?? parsed.groups.find((g) => g.agents.includes('*'));
-  if (!group) return null;
+  const exactGroups = parsed.groups.filter((g) => g.agents.includes(lower));
+  const wildcardGroups = parsed.groups.filter((g) => g.agents.includes('*'));
+  const groups = exactGroups.length ? exactGroups : wildcardGroups;
+  if (!groups.length) return null;
   let best = null;
-  for (const [verdict, rules] of [['allow', group.allow], ['disallow', group.disallow]]) {
-    for (const r of rules) {
-      if (!robotsRuleMatches(r, path)) continue;
-      if (!best || r.length > best.rule.length || (r.length === best.rule.length && verdict === 'allow')) best = { rule: r, verdict };
+  for (const group of groups) {
+    for (const [verdict, rules] of [['allow', group.allow], ['disallow', group.disallow]]) {
+      for (const r of rules) {
+        if (!robotsRuleMatches(r, path)) continue;
+        if (!best || r.length > best.rule.length || (r.length === best.rule.length && verdict === 'allow')) best = { rule: r, verdict };
+      }
     }
   }
   return best ? best.verdict === 'allow' : true;
@@ -666,6 +698,11 @@ export async function probe(origin, opts = {}) {
           card.signed = false;
           notes.push(inner ? 'signed card differs from the plain card' : 'card signature does not verify under the card\'s own did');
         }
+      } else if (sigRes.status >= 200 && sigRes.status < 300) {
+        // A successful response proves that a signature representation was present. If it
+        // cannot be read within the cap, it is invalid—not equivalent to a 404 absence.
+        card.signed = false;
+        notes.push(`card signature response is unusable: ${sigRes.error ?? `HTTP ${sigRes.status}`}`);
       } else if (sigRes.status !== 404 && sigRes.status !== 0) {
         notes.push(`${AGENT_CARD_SIG_PATH} answered ${sigRes.status}`);
       }
@@ -899,16 +936,23 @@ export function route(ways, onHand = {}) {
 export function parseHandoff(result) {
   if (!result || typeof result !== 'object') return null;
   const h = result._meta?.handoff ?? result.handoff;
-  if (h && typeof h === 'object' && Array.isArray(h.next)) {
+  const legacy = result.muretai;
+  if (h != null) {
+    if (typeof h !== 'object' || h.v !== 1 || !Array.isArray(h.next)) return null;
     const next = [];
     for (const e of h.next) {
       if (!e || typeof e !== 'object' || typeof e.kind !== 'string') continue;
       const out = { kind: e.kind };
-      if (e.kind === 'dm' || e.kind === 'a2a') {
+      if (e.kind === 'dm') {
+        if (typeof e.to !== 'string' || !e.to.startsWith('did:key:')) continue;
+        out.to = e.to;
+        if (typeof e.message === 'string' && e.message.trim()) out.message = e.message;
+        if (e.connect != null) out.connect = e.connect;
+      } else if (e.kind === 'a2a') {
         if (typeof e.to === 'string' && e.to.startsWith('did:key:')) out.to = e.to;
         if (isHttpUrl(e.endpoint)) out.endpoint = e.endpoint;
         if (isHttpUrl(e.card)) out.card = e.card;
-        if (!out.to && !out.endpoint) continue;
+        if (!out.to && !out.endpoint && !out.card) continue;
         if (typeof e.message === 'string' && e.message.trim()) out.message = e.message;
         if (e.connect != null) out.connect = e.connect;
       } else if (e.kind === 'mcp') {
@@ -923,10 +967,10 @@ export function parseHandoff(result) {
       }
       next.push(out);
     }
-    return next.length ? { v: Number.isSafeInteger(h.v) ? h.v : 1, next } : null;
+    return next.length ? { v: 1, next } : null;
   }
-  const m = result.muretai;
-  if (m && typeof m === 'object' && m.action === 'dm' && typeof m.to === 'string' && m.to.startsWith('did:key:')) {
+  const m = legacy;
+  if (m && typeof m === 'object' && m.v === 1 && m.action === 'dm' && typeof m.to === 'string' && m.to.startsWith('did:key:')) {
     const e = { kind: 'dm', to: m.to };
     if (typeof m.suggested_message === 'string' && m.suggested_message.trim()) e.message = m.suggested_message;
     if (m.connect != null) e.connect = m.connect;
@@ -936,10 +980,27 @@ export function parseHandoff(result) {
 }
 
 /**
+ * Return the raw card only when it is carried by a complete, usable probe record.
+ * Keeping the trust verdict attached prevents callers from accidentally passing the
+ * unverified `ways.card.card` document across a routing boundary.
+ */
+export function usableCard(cardInfo) {
+  if (!cardInfo || typeof cardInfo !== 'object') return null;
+  if (cardInfo.found !== true || cardInfo.originBound !== true) return null;
+  if (cardInfo.signed !== true && cardInfo.signed !== 'absent') return null;
+  const card = cardInfo.card;
+  if (!card || typeof card !== 'object') return null;
+  if (typeof card.did !== 'string' || !card.did || typeof card.url !== 'string') return null;
+  if (cardInfo.did !== card.did || cardInfo.url !== card.url) return null;
+  return card;
+}
+
+/**
  * The one rule that makes a handoff safe to follow: a continuation that LEAVES the origin
  * is honoured only if the origin's own card names where it points. A `to` must equal the
- * card's DID; a URL must sit on the dialled origin or on the origin the card's `url` names.
- * A `ui` entry is never opened without a person — it is returned with `requiresPerson`.
+ * card's DID; a URL without `to` must sit on the dialled origin. `card` is the complete
+ * `ways.card` probe record, not its detached raw `.card`. A `ui` entry is never opened
+ * without a person — it is returned with `requiresPerson`.
  *
  * Why this exists: a page-authored `to` is rewritable by any third-party script on the
  * page, and a rewritten `to` sends the visitor's signed message — and the account it opens
@@ -948,16 +1009,17 @@ export function parseHandoff(result) {
 export function checkHandoff(handoff, { origin, card } = {}) {
   const dialled = safeOrigin(origin);
   if (!dialled) throw new TypeError(`not an http(s) origin: ${origin}`);
-  const cardDid = typeof card?.did === 'string' ? card.did : null;
-  const cardOrigin = card?.url ? safeOrigin(card.url) : null;
-  const onOrigin = (u) => { const o = safeOrigin(u); return o !== null && (o === dialled || (cardOrigin !== null && o === cardOrigin)); };
+  const candidateCard = usableCard(card);
+  const cardDoc = candidateCard && safeOrigin(candidateCard.url) === dialled ? candidateCard : null;
+  const cardDid = typeof cardDoc?.did === 'string' ? cardDoc.did : null;
+  const onOrigin = (u) => safeOrigin(u) === dialled;
 
   const accepted = [];
   const refused = [];
   for (const e of handoff?.next ?? []) {
     const urls = ['endpoint', 'card', 'server', 'url'].filter((k) => e[k]).map((k) => e[k]);
     if (e.to) {
-      if (!cardDid) { refused.push({ entry: e, reason: 'names a DID, but the origin serves no card to check it against' }); continue; }
+      if (!cardDid) { refused.push({ entry: e, reason: 'names a DID, but the origin serves no usable card to check it against' }); continue; }
       if (e.to !== cardDid) { refused.push({ entry: e, reason: `names ${e.to}, but the origin's card is ${cardDid}` }); continue; }
       const off = urls.filter((u) => !onOrigin(u));
       accepted.push({ entry: e, ...(off.length ? { note: 'endpoint is off-origin; the reply must verify under the named DID' } : {}) });
@@ -1021,7 +1083,10 @@ export function signingPayload(f) {
  *  one displayed is exactly what this refuses. Never throws. */
 export function verifyEnvelopeSignature(f) {
   try {
-    if (!f || typeof f !== 'object' || !f.from || !f.sig || typeof f.to !== 'string') return false;
+    if (!f || typeof f !== 'object' || typeof f.from !== 'string' || !f.from || !f.sig) return false;
+    if (typeof f.to !== 'string' || !f.to || typeof f.messageId !== 'string' || !f.messageId) return false;
+    if (typeof f.text !== 'string' || !Number.isSafeInteger(f.timestamp)) return false;
+    if (f.contextId !== null && typeof f.contextId !== 'string') return false;
     const sig = Buffer.from(String(f.sig), 'base64');
     if (sig.length !== 64) return false;
     return verifyEd25519(publicKeyFromDid(f.from), sig, Buffer.from(signingPayload(f), 'utf8'));
@@ -1058,6 +1123,7 @@ export function verifyReply(result, { doorDid, myDid, now = Math.floor(Date.now(
   const text = Array.isArray(result.parts)
     ? result.parts.filter((p) => p && p.kind === 'text' && typeof p.text === 'string').map((p) => p.text).join('')
     : '';
+  if (typeof result.messageId !== 'string' || !result.messageId) out.reasons.push('messageId is missing');
   if (meta.from !== doorDid) out.reasons.push(`signed by ${typeof meta.from === 'string' ? meta.from : 'nobody'}, not the DID the card names`);
   if (meta.to !== myDid) out.reasons.push('not addressed to you');
   if (!Number.isSafeInteger(meta.timestamp) || Math.abs(now - meta.timestamp) > REPLY_WINDOW_S) out.reasons.push(`timestamp outside the ${REPLY_WINDOW_S} s window`);
@@ -1065,10 +1131,12 @@ export function verifyReply(result, { doorDid, myDid, now = Math.floor(Date.now(
     out.reasons.push('signature does not verify over the six fields');
   }
   out.ok = out.reasons.length === 0;
-  out.text = text;
-  out.messageId = typeof result.messageId === 'string' ? result.messageId : null;
-  out.contextId = result.contextId ?? null;
-  out.timestamp = Number.isSafeInteger(meta.timestamp) ? meta.timestamp : null;
+  if (out.ok) {
+    out.text = text;
+    out.messageId = result.messageId;
+    out.contextId = result.contextId ?? null;
+    out.timestamp = meta.timestamp;
+  }
   return out;
 }
 
@@ -1108,6 +1176,7 @@ export async function knock(origin, { key, text, contextId = null, timeoutMs, de
   let status = 0;
   let doc = null;
   let retryAfter = null;
+  let bodyError = null;
   try {
     const res = await f(endpoint, {
       method: 'POST', redirect: 'manual', signal: ctrl.signal,
@@ -1116,19 +1185,35 @@ export async function knock(origin, { key, text, contextId = null, timeoutMs, de
     });
     status = res.status;
     retryAfter = retryAfterSeconds(typeof res.headers?.get === 'function' ? res.headers.get('retry-after') : null);
-    doc = parseJSON(await res.text());
+    const responseBody = await readBodyCapped(res, ctrl, MAX_KNOCK_RESPONSE_BYTES);
+    if (responseBody.ok) doc = parseJSON(responseBody.text);
+    else bodyError = responseBody.error;
   } catch (e) {
-    return { ...base, sent: true, door: { did: to, endpoint }, messageId: body.params.message.messageId, status, verified: false, error: { message: e?.name === 'AbortError' ? 'timeout' : String(e?.message || e) } };
+    return {
+      ...base,
+      sent: true,
+      door: { did: to, endpoint },
+      messageId: body.params.message.messageId,
+      status,
+      ...(retryAfter !== null ? { retryAfter } : {}),
+      verified: false,
+      error: { message: e?.name === 'AbortError' ? 'timeout' : String(e?.message || e) },
+    };
   } finally {
     clearTimeout(timer);
   }
   const sent = { ...base, sent: true, door: { did: to, endpoint }, messageId: body.params.message.messageId, status, ...(retryAfter !== null ? { retryAfter } : {}) };
+  if (bodyError) return { ...sent, verified: false, error: { message: bodyError } };
   if (!doc) return { ...sent, verified: false, error: { message: `the door answered ${status} with no JSON-RPC body` } };
   if (doc.error && typeof doc.error === 'object') {
     return { ...sent, verified: false, error: { code: doc.error.code ?? null, message: doc.error.message ?? '', ...(doc.error.data !== undefined ? { data: doc.error.data } : {}) }, ...(contract?.howTo ? { howTo: contract.howTo } : {}) };
   }
+  if (status < 200 || status >= 300) {
+    return { ...sent, verified: false, error: { message: `the door answered HTTP ${status}; a non-success response cannot be a verified reply` } };
+  }
   const v = verifyReply(doc.result, { doorDid: to, myDid: key.did });
-  return { ...sent, verified: v.ok, reply: { text: v.text, messageId: v.messageId, contextId: v.contextId, timestamp: v.timestamp }, ...(v.ok ? {} : { refused: v.reasons }) };
+  if (!v.ok) return { ...sent, verified: false, refused: v.reasons };
+  return { ...sent, verified: true, reply: { text: v.text, messageId: v.messageId, contextId: v.contextId, timestamp: v.timestamp } };
 }
 
 // ================================================================ the door's contract

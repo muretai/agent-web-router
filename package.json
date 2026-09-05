@@ -1,6 +1,6 @@
 {
   "name": "@muretai/agent-web-router",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Help your agent behave on the websites it visits. A person already in the tab keeps the page -- this does not replace WebMCP. When the agent is alone and the site already published an Agent Card, it takes that door, checks it is theirs, and knocks. It does not follow a pointer to someone else's door. Zero dependencies.",
   "type": "module",
   "main": "agent-web-router.mjs",
@@ -14,7 +14,9 @@
     "agent-web-router.mjs",
     "bin/",
     "spec/",
+    "scripts/test.mjs",
     "scripts/distill/",
+    "test/",
     "diagrams/",
     "SKILL.md",
     "LICENSE",
@@ -24,7 +26,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node scripts/test.mjs",
+    "prepublishOnly": "npm test",
     "probe": "node bin/agent-web-router.mjs probe",
     "distill": "node scripts/distill/loop.mjs",
     "distill:record": "node scripts/distill/record.mjs",

@@ -27,6 +27,17 @@ function run(file, extra = []) {
   return r;
 }
 
+function runNpm(args) {
+  const options = { cwd: ROOT, encoding: 'utf8' };
+  if (process.env.npm_execpath) {
+    return spawnSync(process.execPath, [process.env.npm_execpath, ...args], options);
+  }
+  return spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, {
+    ...options,
+    shell: process.platform === 'win32',
+  });
+}
+
 run('distill.mjs');
 run('measure.mjs');
 
@@ -37,7 +48,7 @@ run('distill.mjs');
 
 if (!skipM0) {
   process.stdout.write('\n--- M0 npm test ---\n');
-  const t = spawnSync('npm', ['test'], { cwd: ROOT, encoding: 'utf8' });
+  const t = runNpm(['test']);
   if (t.stdout) process.stdout.write(t.stdout);
   if (t.stderr) process.stderr.write(t.stderr);
   if (t.status !== 0) {

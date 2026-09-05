@@ -39,6 +39,10 @@ test('canonical JSON matches the Agent Entry vectors (integer-only subset; float
   assert.ok(checked >= 8, `only ${checked} canonical vectors checked`);
 });
 
+test('canonical JSON sorts object keys by Unicode code point, not UTF-16 code unit', () => {
+  assert.equal(canonicalJSON({ '\u{10000}': 2, '\uE000': 1 }), '{"":1,"𐀀":2}');
+});
+
 test('the six-field signing payload is byte-identical to the door\'s', () => {
   for (const e of V.envelope) {
     assert.equal(signingPayload(e), e.signingPayload, e.name);

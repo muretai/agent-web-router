@@ -13,7 +13,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { probe, route, parseHandoff, checkHandoff, describeKnock, loadKey, knock, VERSION } from '../agent-web-router.mjs';
+import { probe, route, parseHandoff, checkHandoff, usableCard, describeKnock, loadKey, knock, VERSION } from '../agent-web-router.mjs';
 
 function usage(code = 1) {
   process.stderr.write([
@@ -135,7 +135,8 @@ async function cmdProbe(args) {
   }
   const onHand = { person: Boolean(args.flags.person), browser: Boolean(args.flags.browser), token: Boolean(args.flags.token), key: !args.flags['no-key'] };
   const decision = route(result.ways, onHand);
-  const knock = result.ways.card.found ? describeKnock(result.ways.card.card) : null;
+  const card = usableCard(result.ways.card);
+  const knock = card ? describeKnock(card) : null;
   if (args.flags.json) {
     const { card, ...rest } = result.ways.card;   // the raw card rides along under `card`
     process.stdout.write(JSON.stringify({ ...result, ways: { ...result.ways, card: { ...rest, card } }, route: decision, knock }, null, 2) + '\n');
@@ -167,18 +168,16 @@ async function cmdHandoff(args) {
     process.exit(1);
   }
   const cardInfo = probed.ways.card;
-  // Only a card this origin actually stands behind can vouch for a handoff: served here,
-  // bound here, and not carrying a failed signature.
-  const usable = cardInfo.found && cardInfo.originBound && cardInfo.signed !== false ? cardInfo.card : null;
-  const verdict = handoff ? checkHandoff(handoff, { origin, card: usable }) : { accepted: [], refused: [] };
+  const usable = usableCard(cardInfo);
+  const verdict = handoff ? checkHandoff(handoff, { origin, card: cardInfo }) : { accepted: [], refused: [] };
   const out = { origin: probed.origin, handoff, cardDid: usable?.did ?? null, ...verdict };
   if (args.flags.json) {
     process.stdout.write(JSON.stringify(out, null, 2) + '\n');
   } else {
     const lines = [`agent-web-router ${VERSION} · handoff against ${probed.origin} (card ${usable?.did ?? 'none usable'})`, ''];
     if (!handoff) lines.push('no handoff found in the result (nothing to follow)');
-    for (const a of out.accepted) lines.push(`  accept  ${a.entry.kind}  ${a.entry.to ?? a.entry.endpoint ?? a.entry.server ?? a.entry.url}${a.requiresPerson ? '  (needs a person: never opened silently)' : ''}${a.note ? `  [${a.note}]` : ''}`);
-    for (const r of out.refused) lines.push(`  REFUSE  ${r.entry.kind}  ${r.entry.to ?? r.entry.endpoint ?? r.entry.server ?? r.entry.url}  — ${r.reason}`);
+    for (const a of out.accepted) lines.push(`  accept  ${a.entry.kind}  ${a.entry.to ?? a.entry.endpoint ?? a.entry.card ?? a.entry.server ?? a.entry.url}${a.requiresPerson ? '  (needs a person: never opened silently)' : ''}${a.note ? `  [${a.note}]` : ''}`);
+    for (const r of out.refused) lines.push(`  REFUSE  ${r.entry.kind}  ${r.entry.to ?? r.entry.endpoint ?? r.entry.card ?? r.entry.server ?? r.entry.url}  — ${r.reason}`);
     process.stdout.write(lines.join('\n') + '\n');
   }
   process.exit(handoff && out.refused.length === 0 ? 0 : 2);
@@ -194,7 +193,8 @@ async function cmdKnock(args) {
     // No key: do not knock. Show the door's own contract — it teaches how to mint one.
     let probed;
     try { probed = await probe(url, { timeoutMs, deadlineMs }); } catch (e) { process.stderr.write(`agent-web-router: ${e.message}\n`); process.exit(1); }
-    const contract = probed.ways.card.found ? describeKnock(probed.ways.card.card) : null;
+    const card = usableCard(probed.ways.card);
+    const contract = card ? describeKnock(card) : null;
     if (args.flags.json) process.stdout.write(JSON.stringify({ origin: probed.origin, sent: false, why: 'no key on hand (--key <file>)', knock: contract }, null, 2) + '\n');
     else {
       process.stdout.write(`agent-web-router ${VERSION} · knock ${probed.origin}\n\nno key on hand: nothing was sent. The door's own contract:\n`);
@@ -225,9 +225,11 @@ async function cmdKnock(args) {
         lines.push(`refused by the door: ${result.error.code ?? ''} ${result.error.message ?? ''}`.trim());
         if (result.retryAfter != null) lines.push(`retry-after: ${result.retryAfter} s — the door's timing; nothing was re-sent`);
         if (result.howTo) lines.push(`how-to: ${result.howTo}`);
-      } else {
-        lines.push(`reply ${result.verified ? 'verified' : 'NOT verified'}: signed by the card's DID, addressed to you, within 300 s`);
+      } else if (!result.verified) {
+        lines.push('reply NOT verified: untrusted reply body withheld');
         if (result.refused) for (const r of result.refused) lines.push(`  - ${r}`);
+      } else {
+        lines.push('reply verified: signed by the card\'s DID, addressed to you, within 300 s');
         lines.push(`context ${result.reply.contextId ?? '(none)'} — pass --context to continue this conversation`);
         lines.push('', result.reply.text);
       }

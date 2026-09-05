@@ -63,7 +63,15 @@ function canon(v) {
   if (v === null || typeof v === 'boolean' || typeof v === 'number') return JSON.stringify(v);
   if (typeof v === 'string') return JSON.stringify(v);
   if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
-  return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}';
+  const byCodePoint = (a, b) => {
+    const aa = [...a].map((c) => c.codePointAt(0));
+    const bb = [...b].map((c) => c.codePointAt(0));
+    for (let i = 0; i < Math.min(aa.length, bb.length); i++) {
+      if (aa[i] !== bb[i]) return aa[i] - bb[i];
+    }
+    return aa.length - bb.length;
+  };
+  return '{' + Object.keys(v).filter((k) => v[k] !== undefined).sort(byCodePoint).map((k) => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}';
 }
 function signedCard(card, privateKey, ts = 1700000000) {
   const payload = canon({ card, ts, typ: 'agentcard', v: 1 });
@@ -109,6 +117,7 @@ async function startSite(build) {
   let door = null;          // { replyKey, refuse } — a door that verifies and answers signed
   let redirects = {};       // path -> absolute URL, answered 302
   let endless = [];         // paths whose body never ends (a stream that trickles forever)
+  let interrupted = [];     // paths that send 200 headers, then reset during the body
   let stall = false;        // accept the connection, never answer (a black hole)
   const posts = [];
   const server = http.createServer((req, res) => {
@@ -119,6 +128,13 @@ async function startSite(build) {
       res.writeHead(200, { 'content-type': 'application/json' });
       const drip = setInterval(() => res.write(' '.repeat(64 * 1024)), 5);
       res.on('close', () => clearInterval(drip));
+      return;
+    }
+    if (interrupted.includes(path)) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.flushHeaders();
+      res.write('{"partial":');
+      setTimeout(() => res.destroy(), 10);
       return;
     }
     if (req.method === 'POST') {
@@ -140,13 +156,37 @@ async function startSite(build) {
         const meta = msg?.metadata || {};
         let ok = false;
         try { ok = !door.refuse && verify(null, Buffer.from(sixFields(msg), 'utf8'), publicKeyOf(meta.from), Buffer.from(meta.sig, 'base64')); } catch { ok = false; }
-        res.writeHead(200, { 'content-type': 'application/json' });
-        if (!ok) { res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc?.id ?? null, error: { code: -32001, message: 'signature verification failed', data: { howTo: `${base}/how-to` } } })); return; }
-        const reply = { kind: 'message', role: 'agent', parts: [{ kind: 'text', text: `Hello, ${meta.from}. Ask away.` }], messageId: randomUUID(), contextId: msg.contextId ?? (door.mintContext ? randomUUID() : null) };
+        if (!ok) {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc?.id ?? null, error: { code: -32001, message: 'signature verification failed', data: { howTo: `${base}/how-to` } } }));
+          return;
+        }
+        if (door.endlessReply) {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          const drip = setInterval(() => res.write(' '.repeat(64 * 1024)), 5);
+          res.on('close', () => clearInterval(drip));
+          return;
+        }
+        if (door.interruptedReply) {
+          res.writeHead(door.responseStatus ?? 200, {
+            'content-type': 'application/json',
+            ...(door.retryAfterHeader != null ? { 'retry-after': String(door.retryAfterHeader) } : {}),
+          });
+          res.flushHeaders();
+          res.write('{"partial":');
+          setTimeout(() => res.destroy(), 10);
+          return;
+        }
+        const reply = { kind: 'message', role: 'agent', parts: [{ kind: 'text', text: door.replyText ?? `Hello, ${meta.from}. Ask away.` }], messageId: randomUUID(), contextId: msg.contextId ?? (door.mintContext ? randomUUID() : null) };
+        if (door.omitMessageId) delete reply.messageId;
         const ts = Math.floor(Date.now() / 1000) - (door.stale ? 1000 : 0);
         const signer = door.replyKey;
         const payload = canon({ contextId: reply.contextId, from: signer.did, messageId: reply.messageId, text: reply.parts[0].text, timestamp: ts, to: meta.from });
         reply.metadata = { timestamp: ts, from: door.claimDid ?? signer.did, to: meta.from, sig: sign(null, Buffer.from(payload, 'utf8'), signer.privateKey).toString('base64') };
+        res.writeHead(door.responseStatus ?? 200, {
+          'content-type': 'application/json',
+          ...(door.retryAfterHeader != null ? { 'retry-after': String(door.retryAfterHeader) } : {}),
+        });
         res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result: reply }));
       });
       return;
@@ -177,6 +217,7 @@ async function startSite(build) {
   if (parts.door) door = { replyKey: id, ...parts.door };
   if (parts.redirects) redirects = parts.redirects;
   if (parts.endless) endless = parts.endless;
+  if (parts.interrupted) interrupted = parts.interrupted;
   if (parts.stall) stall = true;
   const sockets = new Set();
   server.on('connection', (s) => { sockets.add(s); s.on('close', () => sockets.delete(s)); });
@@ -229,6 +270,23 @@ test('declarative WebMCP tools are read from the HTML without a browser', async 
     assert.deepEqual(out.ways.page.declarativeTools.map((t) => t.name), ['book_table']);
     assert.equal(out.ways.page.declarativeTools[0].action, '/book');
     assert.match(out.ways.page.imperativeHint, /modelContext|webmcp/);
+  } finally { await site.close(); }
+});
+
+test('commented-out declarative tools are not reported as live page tools', async () => {
+  const html = `<!doctype html><html><body>
+<!-- <form toolname="deleted_form" tooldescription="No longer live"></form> -->
+<!-- <tool name="deleted_voix" description="No longer live"></tool> -->
+<fo<!-- a comment cannot join tag-name tokens -->rm toolname="joined_form" tooldescription="Never a form"></form>
+<to<!-- a comment cannot join tag-name tokens -->ol name="joined_voix" description="Never a tool"></tool>
+<form<!-- a comment cannot terminate a tag name --> toolname="suffix_form" tooldescription="Never a form"></form>
+<tool<!-- a comment cannot terminate a tag name --> name="suffix_voix" description="Never a tool"></tool>
+<form toolname="live_form" tooldescription="Still live"></form>
+</body></html>`;
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), html }));
+  try {
+    const { out } = await probeJSON(site.base);
+    assert.deepEqual(out.ways.page.declarativeTools.map((t) => t.name), ['live_form']);
   } finally { await site.close(); }
 });
 
@@ -346,6 +404,54 @@ test('ATTACK: a signed card signed by another key is refused, not ignored', asyn
     assert.ok(!out.route.routes.some((r) => r.kind === 'card'), 'a present-but-invalid signature must not become "unsigned"');
     assert.match(out.route.excluded.find((x) => x.kind === 'card').why, /refused/);
     assert.equal(code, 2);
+  } finally { await site.close(); }
+});
+
+test('ATTACK: relabelling a v1 card signature as an unknown envelope version is refused', async () => {
+  const site = await startSite((base, id) => {
+    const card = makeCard(base, id.did);
+    const sig = signedCard(card, id.privateKey);
+    sig.v = 2;
+    return { card, sig, html: HTML_PLAIN };
+  });
+  try {
+    const { code, out } = await probeJSON(site.base);
+    assert.equal(code, 2);
+    assert.equal(out.ways.card.signed, false);
+    assert.ok(!out.route.routes.some((r) => r.kind === 'card'));
+    assert.equal(out.knock, null);
+  } finally { await site.close(); }
+});
+
+test('ATTACK: an oversized signature response is invalid, never downgraded to unsigned', async () => {
+  const site = await startSite((base, id) => ({
+    card: makeCard(base, id.did),
+    endless: ['/.well-known/agent-card.sig.json'],
+    html: HTML_PLAIN,
+  }));
+  try {
+    const { code, out } = await probeJSON(site.base, '--timeout', '1000');
+    assert.equal(code, 2);
+    assert.equal(out.ways.card.signed, false);
+    assert.ok(!out.route.routes.some((r) => r.kind === 'card'));
+    assert.equal(out.knock, null);
+    assert.ok(out.notes.some((n) => /signature|body over/i.test(n)), JSON.stringify(out.notes));
+  } finally { await site.close(); }
+});
+
+test('ATTACK: an interrupted HTTP 200 signature response is invalid, never unsigned', async () => {
+  const site = await startSite((base, id) => ({
+    card: makeCard(base, id.did),
+    interrupted: ['/.well-known/agent-card.sig.json'],
+    html: HTML_PLAIN,
+  }));
+  try {
+    const { code, out } = await probeJSON(site.base, '--timeout', '1000');
+    assert.equal(code, 2);
+    assert.equal(out.ways.card.signed, false);
+    assert.ok(!out.route.routes.some((r) => r.kind === 'card'));
+    assert.equal(out.knock, null);
+    assert.ok(out.notes.some((n) => /signature response is unusable/i.test(n)), JSON.stringify(out.notes));
   } finally { await site.close(); }
 });
 
@@ -516,6 +622,17 @@ test('a robots.txt that closes the front page to everyone excludes the HEADLESS 
 
     const person = await probeJSON(site.base, '--person');
     assert.equal(person.out.route.routes[0].kind, 'page', 'a person in the tab is not a crawler');
+  } finally { await site.close(); }
+});
+
+test('duplicate matching robots groups are combined before routing', async () => {
+  const robots = 'User-agent: *\nDisallow: /private\n\nUser-agent: *\nDisallow: /\n';
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did), html: HTML_WITH_TOOLS, robots }));
+  try {
+    const { out } = await probeJSON(site.base, '--browser');
+    assert.equal(out.signposts.robots.everyoneMayFetchRoot, false);
+    assert.ok(!out.route.routes.some((x) => x.kind === 'page'));
+    assert.match(out.route.excluded.find((x) => x.kind === 'page').why, /robots\.txt/);
   } finally { await site.close(); }
 });
 
@@ -734,7 +851,7 @@ test('ATTACK: a handoff is not vouched for by a card that fails its signature', 
     const file = tmpJSON({ _meta: { handoff: { v: 1, next: [{ kind: 'dm', to: site.id.did }] } } });
     const r = await cli('handoff', file, '--origin', site.base, '--json');
     assert.equal(r.code, 2);
-    assert.match(JSON.parse(r.stdout).refused[0].reason, /no card/);
+    assert.match(JSON.parse(r.stdout).refused[0].reason, /no usable card/);
   } finally { await site.close(); }
 });
 
@@ -775,6 +892,34 @@ test('a malformed handoff is nothing to follow (fail closed)', async () => {
     const r = await cli('handoff', file, '--origin', site.base, '--json');
     assert.equal(r.code, 2);
     assert.equal(JSON.parse(r.stdout).handoff, null);
+  } finally { await site.close(); }
+});
+
+test('an unknown or missing handoff version is nothing to follow', async () => {
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did) }));
+  try {
+    for (const handoff of [
+      { v: 2, next: [{ kind: 'dm', to: site.id.did }] },
+      { next: [{ kind: 'dm', to: site.id.did }] },
+    ]) {
+      const r = await cli('handoff', tmpJSON({ _meta: { handoff } }), '--origin', site.base, '--json');
+      assert.equal(r.code, 2);
+      assert.equal(JSON.parse(r.stdout).handoff, null);
+    }
+  } finally { await site.close(); }
+});
+
+test('an a2a handoff may name only its Agent Card URL', async () => {
+  const site = await startSite((base, id) => ({ card: makeCard(base, id.did) }));
+  try {
+    const file = tmpJSON({ _meta: { handoff: { v: 1, next: [
+      { kind: 'a2a', card: `${site.base}/.well-known/agent-card.json` },
+    ] } } });
+    const r = await cli('handoff', file, '--origin', site.base, '--json');
+    assert.equal(r.code, 0, r.stderr + r.stdout);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.accepted.length, 1);
+    assert.equal(out.accepted[0].entry.card, `${site.base}/.well-known/agent-card.json`);
   } finally { await site.close(); }
 });
 
@@ -824,6 +969,22 @@ test('knock without a key sends nothing and prints the door\'s own how-to', asyn
   } finally { await site.close(); }
 });
 
+test('ATTACK: knock without a key withholds a contract from a rejected card', async () => {
+  const other = makeIdentity();
+  const site = await startSite((base, id) => {
+    const card = makeCard(base, id.did);
+    card.securitySchemes['signed-envelope'].endpoint = 'https://elsewhere.example/collect';
+    return { card, sig: signedCard(card, other.privateKey) };
+  });
+  try {
+    const r = await cli('knock', site.base, '--json');
+    assert.equal(r.code, 2);
+    assert.equal(JSON.parse(r.stdout).knock, null);
+    assert.doesNotMatch(r.stdout, /elsewhere\.example/);
+    assert.equal(site.posts.length, 0);
+  } finally { await site.close(); }
+});
+
 test('knock --context continues the conversation: the second knock carries the reply\'s contextId and still verifies', async () => {
   const visitor = makeIdentity();
   // An A2A-style door that assigns a contextId when the visitor arrives without one.
@@ -858,6 +1019,11 @@ test('ATTACK: a reply signed by another key is refused even though it claims the
     assert.equal(out.sent, true);
     assert.equal(out.verified, false);
     assert.ok(out.refused.some((x) => /signature does not verify/.test(x)), out.refused.join('; '));
+    assert.equal(out.reply, undefined, 'an unverified reply body must not cross the trust boundary');
+    assert.doesNotMatch(r.stdout, /Hello,/);
+    const human = await cli('knock', site.base, '--key', keyFile(visitor));
+    assert.equal(human.code, 2);
+    assert.doesNotMatch(human.stdout, /Hello,/);
   } finally { await site.close(); }
 });
 
@@ -879,6 +1045,83 @@ test('ATTACK: a stale reply (outside the 300 s window) is refused', async () => 
     const out = JSON.parse((await cli('knock', site.base, '--key', keyFile(visitor), '--json')).stdout);
     assert.equal(out.verified, false);
     assert.ok(out.refused.some((x) => /window/.test(x)));
+  } finally { await site.close(); }
+});
+
+test('ATTACK: a signed reply missing messageId is refused and its body is withheld', async () => {
+  const visitor = makeIdentity();
+  const sentinel = 'UNTRUSTED BODY MUST STAY HIDDEN';
+  const site = await startSite((base, id) => ({
+    card: makeCard(base, id.did),
+    door: { omitMessageId: true, replyText: sentinel },
+  }));
+  try {
+    const r = await cli('knock', site.base, '--key', keyFile(visitor), '--json');
+    assert.equal(r.code, 2);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.verified, false);
+    assert.ok(out.refused.some((x) => /messageId/.test(x)), out.refused.join('; '));
+    assert.equal(out.reply, undefined);
+    assert.doesNotMatch(r.stdout, new RegExp(sentinel));
+  } finally { await site.close(); }
+});
+
+test('ATTACK: a signed result on HTTP 429 or 503 is a refusal, not a verified reply', async () => {
+  const visitor = makeIdentity();
+  for (const status of [429, 503]) {
+    const sentinel = `UNTRUSTED HTTP ${status} BODY`;
+    const site = await startSite((base, id) => ({
+      card: makeCard(base, id.did),
+      door: { responseStatus: status, retryAfterHeader: 30, replyText: sentinel },
+    }));
+    try {
+      const r = await cli('knock', site.base, '--key', keyFile(visitor), '--json');
+      assert.equal(r.code, 2, `HTTP ${status}: ${r.stderr}${r.stdout}`);
+      const out = JSON.parse(r.stdout);
+      assert.equal(out.status, status);
+      assert.equal(out.verified, false);
+      assert.equal(out.retryAfter, 30);
+      assert.equal(out.reply, undefined);
+      assert.match(out.error.message, new RegExp(String(status)));
+      assert.doesNotMatch(r.stdout, new RegExp(sentinel));
+      assert.equal(site.posts.length, 1);
+    } finally { await site.close(); }
+  }
+});
+
+test('ATTACK: an endless knock response is abandoned at the cap', async () => {
+  const visitor = makeIdentity();
+  const site = await startSite((base, id) => ({
+    card: makeCard(base, id.did),
+    door: { endlessReply: true },
+  }));
+  try {
+    const r = await cli('knock', site.base, '--key', keyFile(visitor), '--json', '--timeout', '1000');
+    assert.equal(r.code, 2, r.stderr + r.stdout);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.status, 200);
+    assert.equal(out.verified, false);
+    assert.match(out.error.message, /body over \d+ bytes/);
+    assert.equal(out.reply, undefined);
+    assert.equal(site.posts.length, 1);
+  } finally { await site.close(); }
+});
+
+test('an interrupted refusal body still surfaces HTTP status and Retry-After', async () => {
+  const visitor = makeIdentity();
+  const site = await startSite((base, id) => ({
+    card: makeCard(base, id.did),
+    door: { interruptedReply: true, responseStatus: 429, retryAfterHeader: 45 },
+  }));
+  try {
+    const r = await cli('knock', site.base, '--key', keyFile(visitor), '--json', '--timeout', '1000');
+    assert.equal(r.code, 2, r.stderr + r.stdout);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.status, 429);
+    assert.equal(out.retryAfter, 45);
+    assert.equal(out.verified, false);
+    assert.ok(out.error);
+    assert.equal(site.posts.length, 1);
   } finally { await site.close(); }
 });
 
@@ -1009,6 +1252,9 @@ test('the command line refuses bad input with exit 1 and never POSTs', async () 
     assert.equal((await cli()).code, 1);
     assert.equal((await cli('probe')).code, 1);
     assert.equal((await cli('probe', 'not a url')).code, 1);
+    const fileOrigin = await cli('probe', 'file:///tmp/agent-web-router', '--json');
+    assert.equal(fileOrigin.code, 1);
+    assert.match(fileOrigin.stderr, /not an http\(s\) origin/);
     assert.equal((await cli('handoff', '/nonexistent/result.json', '--origin', base)).code, 1);
     await cli('probe', base);
     assert.deepEqual(posts, [], 'a probe is GET only');
