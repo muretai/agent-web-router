@@ -55,5 +55,9 @@ test('npm selects the runnable package and its conformance tests', () => {
   ]) {
     assert.ok(files.has(path), `packed artifact is missing ${path}`);
   }
-  assert.ok((files.get('bin/agent-web-router.mjs').mode & 0o111) !== 0, 'packed CLI must remain executable');
+  assert.equal(PACKAGE.bin['agent-web-router'], './bin/agent-web-router.mjs');
+  assert.match(readFileSync(join(ROOT, 'bin', 'agent-web-router.mjs'), 'utf8'), /^#!\/usr\/bin\/env node\r?$/m);
+  if (process.platform !== 'win32') {
+    assert.ok((files.get('bin/agent-web-router.mjs').mode & 0o111) !== 0, 'packed CLI must remain executable');
+  }
 });
