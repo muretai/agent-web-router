@@ -1,27 +1,24 @@
 // SPDX-License-Identifier: MIT
 /*
- * agent-wire/js/wire.mjs — the wire/crypto layer of Agent Entry, as ONE file with no dependencies.
+ * agent-seam/js/seam.mjs — the seam of Agent Entry: its wire/crypto layer, as ONE file with no
+ * dependencies. THIS IS ITS HOME. Edit it here; every consumer re-vendors.
  *
- * PROVENANCE. Everything from the "pinned" marker below to the end of this file is copied
- * VERBATIM from the Agent Entry door — `web/agent-entry/muretai-agent-entry.mjs` in
- * muretai-network (`main` d143ffc), the same file published as @muretai/agent-entry
- * (agent-entry `main` a1f33f8). The block between the banner "CANONICAL JSON" and the end marker
- * is that file's, unchanged; above it are single DECLARATIONS of it, quoted by name — the
- * wire constants and the JSON-RPC error table, which live outside the block but are as much
- * the contract as anything in it. PROVENANCE.md records the digests, and
- * `tools/check-twins.mjs` proves both statements against the sibling checkouts, by name and
- * by byte. No line numbers here on purpose: the same block sits at different lines in core,
- * in the published package and on the pay/v0 branch.
- *
- * DO NOT EDIT below the marker. The door (Muretai core) is the source of truth; a change lands
- * there first and is re-synced here by core's release station. Only this header and the footer are
- * this repo's own text.
+ * WHO CARRIES A COPY. The Agent Entry door (`@muretai/agent-entry`, muretai-agent-entry.mjs)
+ * carries the block between the `CANONICAL JSON` banner and `// ---- end of the seam` verbatim,
+ * plus the declarations under the `// ---- pinned:` marker (the wire constants, the JSON-RPC
+ * error table and three small helpers the block calls): `scripts/vendor-seam.mjs` there splices
+ * the block in, and `conformance/seam-twin.mjs` fails when either drifts. `@muretai/agent-site-checker`
+ * and `@muretai/agent-web-router` vendor this whole file beside themselves. Every copy sits next
+ * to a VENDOR.json naming the commit and the sha256 it was taken at; tools/manifest.json here says
+ * what may be cut and where the banners are. No line numbers anywhere on purpose: the block sits
+ * at different lines in every consumer.
  *
  * WHAT IS HERE. Canonical JSON, Ed25519 over a seed, base58btc + did:key, the signing envelope
  * (six frozen fields), KeyState v1, Web Bot Auth (RFC 9421 subset, verify-only), device-key
  * binding v2 (P-256 countersign), the signed Agent Card envelope, cryptobox (X25519 +
  * ChaCha20-Poly1305) — and the wire constants and JSON-RPC error table the spec pins. Nothing
  * here dials out, listens, or keeps state: the door's ladder, store and HTTP live in the door.
+ * The Python twin of every function is python/shared/; both are held to vectors/ by the runners.
  */
 
 import {
@@ -30,7 +27,7 @@ import {
 } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 
-// ---- pinned: every non-blank line below, up to the CANONICAL JSON banner, is a verbatim line of the door
+// ---- pinned: declarations the door carries verbatim, up to the CANONICAL JSON banner
 export const PROTOCOL_VERSION = '0.2';
 export const MAX_TEXT_BYTES = 64 * 1024;
 export const MAX_BODY_BYTES = 1024 * 1024;
@@ -1107,7 +1104,7 @@ export function openBox(seedHex, theirPubHex, blobB64, ad = Buffer.alloc(0)) {
   }
 }
 
-// ---- end of the door's block (lines 458–1495 of @muretai/agent-entry 1.11.0)
+// ---- end of the seam
 // The door calls this one unexported helper (its JWKS gate); exported here so a door built on
 // this file needs nothing the block does not already have.
 export { wbaPublicFromJwk };

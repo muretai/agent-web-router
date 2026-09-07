@@ -207,12 +207,13 @@ To continue a conversation, pass the `contextId` a verified reply carried back o
 knock with `--context <id>` — it is one of the six signed fields, so the door's verifier
 sees it under your signature, not beside it. The printed reply names the id.
 
-The signing bytes are not written here. `wire.mjs` is the wire layer of Agent Entry —
-canonical JSON, `did:key`, the six-field payload, the signed card envelope — vendored
-verbatim from [agent-wire](https://github.com/muretai/agent-wire), which publishes those
+The signing bytes are not written here. `seam.mjs` is the seam of Agent Entry — its wire
+layer: canonical JSON, `did:key`, the six-field payload, the signed card envelope — vendored
+verbatim from [agent-seam](https://github.com/muretai/agent-seam), which publishes those
 bytes on their own, and checked against the golden vectors it publishes with them
 (`test/wire_vectors.json`, including the envelopes a door must refuse). One set of bytes,
-whichever runtime answers the contract; `npm test` proves this copy is unedited.
+whichever runtime answers the contract; `npm test` proves this copy is unedited and names
+the agent-seam commit it was taken from.
 
 ## Handoff
 

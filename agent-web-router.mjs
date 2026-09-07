@@ -63,14 +63,14 @@ import { createPrivateKey, createPublicKey, randomUUID, sign as cryptoSign } fro
 // signed card envelope are one contract with one set of bytes, and this file used to carry a
 // second, hand-written implementation of them — a canonicalizer that REFUSED a float the door
 // renders, a key sort by UTF-16 unit where the contract sorts by code point. Both are ways to
-// disagree with every other implementation while every local test passes. `wire.mjs` is the
-// published layer itself (agent-wire, MIT), vendored beside this file and pinned by
-// `test/wire-twin.test.mjs`.
+// disagree with every other implementation while every local test passes. `seam.mjs` is the
+// seam itself — the published layer (agent-seam, MIT) — vendored beside this file and pinned
+// by `test/seam-twin.test.mjs`.
 import {
   AGENT_CARD_PATH, AGENT_CARD_PATH_LEGACY, AGENT_CARD_SIG_PATH,
   canonicalJSON, didFromPublicKeyHex, publicKeyHexFromDid, verifyBytes,
   verifyCardEnvelope, signingPayload, verifyEnvelopeSignature,
-} from './wire.mjs';
+} from './seam.mjs';
 
 export {
   AGENT_CARD_PATH, AGENT_CARD_PATH_LEGACY, AGENT_CARD_SIG_PATH,

@@ -1,7 +1,7 @@
 /**
  * test/vectors.test.mjs — two runtimes, one contract.
  *
- * `wire_vectors.json` is the golden file agent-wire publishes, copied byte for byte: the
+ * `wire_vectors.json` is the golden file agent-seam publishes, copied byte for byte: the
  * canonical-JSON cases, the six-field signing payloads, did:key derivations, a seed→DID
  * pair, and the envelopes a door MUST refuse. The router signs what a door verifies, so it
  * has to produce the same bytes and refuse the same envelopes — a drift in either direction
