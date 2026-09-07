@@ -41,6 +41,14 @@ const PINNED = [
   { mine: 'test/wire_vectors.json', theirs: 'vectors/wire_vectors.json', sha: 'e03e083f644167a67132638ab74fd1c62667db2733fb58466dce2644feca39c2' },
 ];
 
+// A floor: the two files this package vendors are named HERE, so an emptied PINNED list
+// cannot pass by pinning nothing (the for-loop below would simply emit no tests).
+test('the pin names both vendored files', () => {
+  assert.deepEqual(PINNED.map((f) => f.mine).sort(), ['seam.mjs', 'test/wire_vectors.json']);
+  for (const f of PINNED) assert.match(f.sha, /^[0-9a-f]{64}$/, `${f.mine} has a full sha256`);
+  assert.match(PINNED_COMMIT, /^[0-9a-f]{40}$/);
+});
+
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const mine = (f) => readFileSync(join(ROOT, f.mine));
 const git = (...a) => execFileSync('git', ['-C', SEAM_ROOT, ...a], { stdio: ['ignore', 'pipe', 'pipe'] });
