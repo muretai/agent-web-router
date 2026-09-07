@@ -25,9 +25,9 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WIRE_ROOT = resolve(ROOT, process.env.MURETAI_AGENT_WIRE || '../agent-wire');
 
-/** sha256 as vendored on 2026-09-07, from agent-wire main 9f0c648. */
+/** sha256 as vendored on 2026-09-07, from agent-wire main 90f4c8f. */
 const PINNED = [
-  { mine: 'wire.mjs', theirs: 'js/wire.mjs', sha: '21fbf01e6538f49059b88f9c32662c67fae133b7d8ec6cd28ec89d917aab61e1' },
+  { mine: 'wire.mjs', theirs: 'js/wire.mjs', sha: 'f6bf9e611f8f4245bbe47849944b865b29e0fd95cdbee0c34f4b6903210d197f' },
   { mine: 'test/wire_vectors.json', theirs: 'vectors/wire_vectors.json', sha: 'e03e083f644167a67132638ab74fd1c62667db2733fb58466dce2644feca39c2' },
 ];
 

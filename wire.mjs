@@ -3,11 +3,15 @@
  * agent-wire/js/wire.mjs — the wire/crypto layer of Agent Entry, as ONE file with no dependencies.
  *
  * PROVENANCE. Everything from the "pinned" marker below to the end of this file is copied
- * VERBATIM from @muretai/agent-entry 1.11.0 (`muretai-agent-entry.mjs`, commit 551cd2c), which
- * is byte-identical to muretai-network main c35817c `web/agent-entry/muretai-agent-entry.mjs`.
- * The block between the banner "CANONICAL JSON" and the end marker is the door's lines
- * 458–1495 unchanged; the pinned lines above it are single lines of the door selected by name.
- * `tools/check-twins.mjs` proves both statements against the sibling checkouts.
+ * VERBATIM from the Agent Entry door — `web/agent-entry/muretai-agent-entry.mjs` in
+ * muretai-network (`main` d143ffc), the same file published as @muretai/agent-entry
+ * (agent-entry `main` a1f33f8). The block between the banner "CANONICAL JSON" and the end marker
+ * is that file's, unchanged; above it are single DECLARATIONS of it, quoted by name — the
+ * wire constants and the JSON-RPC error table, which live outside the block but are as much
+ * the contract as anything in it. PROVENANCE.md records the digests, and
+ * `tools/check-twins.mjs` proves both statements against the sibling checkouts, by name and
+ * by byte. No line numbers here on purpose: the same block sits at different lines in core,
+ * in the published package and on the pay/v0 branch.
  *
  * DO NOT EDIT below the marker. The door (Muretai core) is the source of truth; a change lands
  * there first and is re-synced here (CHECKLIST-core.md). Only this header and the footer are
