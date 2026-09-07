@@ -59,7 +59,7 @@
 
 import { createPrivateKey, createPublicKey, randomUUID, sign as cryptoSign, verify as cryptoVerify } from 'node:crypto';
 
-export const VERSION = '0.6.0';
+export const VERSION = '0.6.1';
 
 export const AGENT_CARD_PATH = '/.well-known/agent-card.json';
 export const AGENT_CARD_PATH_LEGACY = '/.well-known/agent.json';
