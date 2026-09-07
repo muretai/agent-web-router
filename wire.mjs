@@ -14,7 +14,7 @@
  * in the published package and on the pay/v0 branch.
  *
  * DO NOT EDIT below the marker. The door (Muretai core) is the source of truth; a change lands
- * there first and is re-synced here (CHECKLIST-core.md). Only this header and the footer are
+ * there first and is re-synced here by core's release station. Only this header and the footer are
  * this repo's own text.
  *
  * WHAT IS HERE. Canonical JSON, Ed25519 over a seed, base58btc + did:key, the signing envelope
