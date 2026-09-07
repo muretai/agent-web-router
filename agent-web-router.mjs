@@ -57,13 +57,38 @@
  * Zero dependencies. Node >= 20 (global fetch, node:crypto Ed25519).
  */
 
-import { createPrivateKey, createPublicKey, randomUUID, sign as cryptoSign, verify as cryptoVerify } from 'node:crypto';
+import { createPrivateKey, createPublicKey, randomUUID, sign as cryptoSign } from 'node:crypto';
+
+// THE WIRE LAYER IS NOT WRITTEN HERE. Canonical JSON, did:key, the six signed fields and the
+// signed card envelope are one contract with one set of bytes, and this file used to carry a
+// second, hand-written implementation of them — a canonicalizer that REFUSED a float the door
+// renders, a key sort by UTF-16 unit where the contract sorts by code point. Both are ways to
+// disagree with every other implementation while every local test passes. `wire.mjs` is the
+// published layer itself (agent-wire, MIT), vendored beside this file and pinned by
+// `test/wire-twin.test.mjs`.
+import {
+  AGENT_CARD_PATH, AGENT_CARD_PATH_LEGACY, AGENT_CARD_SIG_PATH,
+  canonicalJSON, didFromPublicKeyHex, publicKeyHexFromDid, verifyBytes,
+  verifyCardEnvelope, signingPayload, verifyEnvelopeSignature,
+} from './wire.mjs';
+
+export {
+  AGENT_CARD_PATH, AGENT_CARD_PATH_LEGACY, AGENT_CARD_SIG_PATH,
+  canonicalJSON, verifyCardEnvelope, signingPayload, verifyEnvelopeSignature,
+};
+
+/** The DID a 32-byte Ed25519 public key encodes. Kept under this name because it is this
+ *  package's published API; the wire layer spells it `didFromPublicKeyHex` and takes either
+ *  a Buffer or hex. */
+export const didFromPublicKey = didFromPublicKeyHex;
+
+/** The 32-byte public key a `did:key` encodes, as a Buffer — this package's published shape.
+ *  The wire layer returns hex. Throws on a malformed DID, as it always did. */
+export function publicKeyFromDid(did) {
+  return Buffer.from(publicKeyHexFromDid(did), 'hex');
+}
 
 export const VERSION = '0.5.0';
-
-export const AGENT_CARD_PATH = '/.well-known/agent-card.json';
-export const AGENT_CARD_PATH_LEGACY = '/.well-known/agent.json';
-export const AGENT_CARD_SIG_PATH = '/.well-known/agent-card.sig.json';
 export const MCP_SERVER_CARD_PATH = '/.well-known/mcp.json';
 export const DID_CONFIGURATION_PATH = '/.well-known/did-configuration.json';
 export const LLMS_TXT_PATH = '/llms.txt';
@@ -78,121 +103,10 @@ export const AI_USER_AGENTS = [
   'Applebot-Extended', 'meta-externalagent', 'Amazonbot', 'DuckAssistBot', 'cohere-ai',
 ];
 
-const CARD_ENVELOPE_TYPE = 'agentcard';
-const CARD_ENVELOPE_VERSION = 1;
-
 const MAX_CARD_BYTES = 256 * 1024;
 const MAX_HTML_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_PROBE_DEADLINE_MS = 30000;
-
-// ================================================================ canonical JSON (safe subset)
-
-/**
- * The bytes a card envelope signs — the same bytes Python's
- * `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False)` produces, for the
- * subset a card can contain: objects, arrays, strings, booleans, null and SAFE INTEGERS.
- * A float is refused rather than rendered: Python's repr and JS's toString disagree on
- * floats, and a signature over bytes that differ by runtime verifies nowhere.
- */
-export function canonicalJSON(v) {
-  if (v === null) return 'null';
-  if (typeof v === 'boolean') return v ? 'true' : 'false';
-  if (typeof v === 'number') {
-    if (!Number.isSafeInteger(v)) throw new TypeError('canonicalJSON: only safe integers are representable here');
-    return String(v);
-  }
-  if (typeof v === 'string') return JSON.stringify(v);
-  if (Array.isArray(v)) return '[' + v.map(canonicalJSON).join(',') + ']';
-  if (typeof v === 'object') {
-    const keys = Object.keys(v).filter((k) => v[k] !== undefined).sort();
-    return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalJSON(v[k])).join(',') + '}';
-  }
-  throw new TypeError(`canonicalJSON: cannot encode ${typeof v}`);
-}
-
-// ================================================================ did:key (Ed25519)
-
-const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-const B58_INDEX = new Map([...B58].map((c, i) => [c, BigInt(i)]));
-const MAX_B58_LEN = 512;   // a DID is ~48 chars; the cap keeps a hostile `did` from buying CPU
-
-function b58encode(data) {
-  let n = 0n;
-  for (const b of data) n = (n << 8n) | BigInt(b);
-  let out = '';
-  while (n > 0n) { out = B58[Number(n % 58n)] + out; n /= 58n; }
-  let pad = 0;
-  for (const b of data) { if (b === 0) pad++; else break; }
-  return '1'.repeat(pad) + out;
-}
-
-/** 32 raw Ed25519 public-key bytes (Buffer or hex) -> `did:key:z…`. */
-export function didFromPublicKey(pub) {
-  const raw = Buffer.isBuffer(pub) ? pub : Buffer.from(pub, 'hex');
-  if (raw.length !== 32) throw new TypeError('an ed25519 public key is 32 bytes');
-  return 'did:key:z' + b58encode(Buffer.concat([Buffer.from([0xed, 0x01]), raw]));
-}
-
-function b58decode(s) {
-  if (typeof s !== 'string') throw new TypeError('base58: not a string');
-  if (s.length > MAX_B58_LEN) throw new RangeError('base58: input too long');
-  let n = 0n;
-  for (const ch of s) {
-    const v = B58_INDEX.get(ch);
-    if (v === undefined) throw new TypeError(`base58: bad character ${JSON.stringify(ch)}`);
-    n = n * 58n + v;
-  }
-  let hex = n.toString(16);
-  if (hex.length % 2) hex = '0' + hex;
-  const raw = n === 0n ? Buffer.alloc(0) : Buffer.from(hex, 'hex');
-  let pad = 0;
-  for (const ch of s) { if (ch === '1') pad++; else break; }
-  return Buffer.concat([Buffer.alloc(pad), raw]);
-}
-
-/** `did:key:z…` -> the 32 raw Ed25519 public-key bytes. With did:key the DID IS the key. */
-export function publicKeyFromDid(did) {
-  if (typeof did !== 'string' || !did.startsWith('did:key:z')) {
-    throw new TypeError('unsupported DID method (only did:key is understood here)');
-  }
-  const raw = b58decode(did.slice('did:key:z'.length));
-  if (raw.length !== 34 || raw[0] !== 0xed || raw[1] !== 0x01) {
-    throw new TypeError('not an ed25519 did:key');
-  }
-  return raw.subarray(2);
-}
-
-const SPKI_ED25519_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
-
-function verifyEd25519(pub32, sig, data) {
-  const key = createPublicKey({ key: Buffer.concat([SPKI_ED25519_PREFIX, pub32]), format: 'der', type: 'spki' });
-  return cryptoVerify(null, data, key, sig);
-}
-
-/**
- * Verify the signed card envelope served at /.well-known/agent-card.sig.json:
- * `{v:1, typ:"agentcard", card, ts, sig}`, `sig` = Ed25519 over canonical `{card,ts,typ,v}`
- * under the key the card's own `did` encodes. Returns the inner card, or null.
- * `expectedDid` is the anti-substitution check: a valid signature only proves "X signed
- * X's card", never that X is the site you dialled.
- */
-export function verifyCardEnvelope(envelope, expectedDid = null) {
-  try {
-    if (!envelope || typeof envelope !== 'object') return null;
-    if (envelope.typ !== CARD_ENVELOPE_TYPE) return null;
-    const { card, ts, sig } = envelope;
-    if (!card || typeof card !== 'object' || typeof card.did !== 'string') return null;
-    if (!Number.isSafeInteger(ts) || sig == null) return null;
-    if (expectedDid !== null && card.did !== expectedDid) return null;
-    const raw = Buffer.from(String(sig), 'base64');
-    if (raw.length !== 64) return null;
-    const payload = canonicalJSON({ card, ts, typ: CARD_ENVELOPE_TYPE, v: CARD_ENVELOPE_VERSION });
-    return verifyEd25519(publicKeyFromDid(card.did), raw, Buffer.from(payload, 'utf8')) ? card : null;
-  } catch {
-    return null;
-  }
-}
 
 // ================================================================ HTTP (GET only, capped)
 
@@ -502,7 +416,7 @@ export function verifyDomainLinkage(token, { did, origin, now = Math.floor(Date.
     else if (now > payload.exp) out.reasons.push('expired');
     if (payload?.nbf !== undefined && (!Number.isSafeInteger(payload.nbf) || now < payload.nbf)) out.reasons.push('not yet valid');
     const sig = Buffer.from(sg, 'base64url');
-    if (sig.length !== 64 || !verifyEd25519(publicKeyFromDid(did), sig, Buffer.from(`${h}.${pl}`, 'utf8'))) {
+    if (sig.length !== 64 || !verifyBytes(publicKeyFromDid(did), sig, Buffer.from(`${h}.${pl}`, 'utf8'))) {
       out.reasons.push("signature does not verify over the JWS signing input under the did's key");
     }
   } catch {
@@ -1011,24 +925,9 @@ export function loadKey(source) {
   return { did: didFromPublicKey(pub), sign: (data) => cryptoSign(null, data, privateKey) };
 }
 
-/** The six frozen signed fields, canonicalized — the same bytes every door verifies. */
-export function signingPayload(f) {
-  return canonicalJSON({ contextId: f.contextId ?? null, from: f.from, messageId: f.messageId, text: f.text, timestamp: f.timestamp, to: f.to });
-}
-
-/** Does `sig` verify under the key `from` encodes? `from` is never taken as a label:
- *  with did:key the DID IS the key, so a valid signature by a different identity than the
- *  one displayed is exactly what this refuses. Never throws. */
-export function verifyEnvelopeSignature(f) {
-  try {
-    if (!f || typeof f !== 'object' || !f.from || !f.sig || typeof f.to !== 'string') return false;
-    const sig = Buffer.from(String(f.sig), 'base64');
-    if (sig.length !== 64) return false;
-    return verifyEd25519(publicKeyFromDid(f.from), sig, Buffer.from(signingPayload(f), 'utf8'));
-  } catch {
-    return false;
-  }
-}
+// `signingPayload` (the six frozen fields) and `verifyEnvelopeSignature` (a signature under
+// the key `from` itself encodes, never a label) are the wire layer's, imported at the top and
+// re-exported unchanged: this package's callers keep the names they had.
 
 /** One signed A2A `message/send` request, ready to POST. `from` is derived from the key
  *  the caller supplied and from nothing else: a `from`, `agent_name` or `as` that a site

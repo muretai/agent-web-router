@@ -12,6 +12,7 @@
   },
   "files": [
     "agent-web-router.mjs",
+    "wire.mjs",
     "bin/",
     "spec/",
     "scripts/distill/",

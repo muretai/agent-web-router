@@ -1,11 +1,14 @@
 /**
  * test/vectors.test.mjs — two runtimes, one contract.
  *
- * `agent-entry-vectors.json` is the Agent Entry conformance file, copied byte for byte: the
+ * `wire_vectors.json` is the golden file agent-wire publishes, copied byte for byte: the
  * canonical-JSON cases, the six-field signing payloads, did:key derivations, a seed→DID
  * pair, and the envelopes a door MUST refuse. The router signs what a door verifies, so it
  * has to produce the same bytes and refuse the same envelopes — a drift in either direction
  * is silent on the wire (nothing throws; signatures simply stop verifying for everyone).
+ *
+ * It is the SUPERSET now (it also carries device bindings, owner state, relay tokens, invites
+ * and sealed boxes), so a group this router does not implement is simply not read here.
  */
 
 import { test } from 'node:test';
@@ -17,26 +20,37 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJSON, signingPayload, didFromPublicKey, loadKey, verifyEnvelopeSignature, verifyDomainLinkage } from '../agent-web-router.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const V = JSON.parse(readFileSync(join(HERE, 'agent-entry-vectors.json'), 'utf8'));
+const V = JSON.parse(readFileSync(join(HERE, 'wire_vectors.json'), 'utf8'));
 
-function hasNonInteger(v) {
-  if (typeof v === 'number') return !Number.isSafeInteger(v);
-  if (Array.isArray(v)) return v.some(hasNonInteger);
-  if (v && typeof v === 'object') return Object.values(v).some(hasNonInteger);
-  return false;
-}
-
-test('canonical JSON matches the Agent Entry vectors (integer-only subset; floats are refused, not mis-rendered)', () => {
+test('canonical JSON matches the wire vectors, every case', () => {
   let checked = 0;
   for (const c of V.canonical) {
-    if (hasNonInteger(c.payload)) {
-      assert.throws(() => canonicalJSON(c.payload), `${c.name}: a float must be refused`);
-      continue;
-    }
     assert.equal(canonicalJSON(c.payload), c.canonical, c.name);
     checked += 1;
   }
-  assert.ok(checked >= 8, `only ${checked} canonical vectors checked`);
+  assert.ok(checked >= 14, `only ${checked} canonical vectors checked`);
+});
+
+// The refusal duty lives in `numberHazards`, not in `canonical`, and the distinction is the
+// whole point: a `canonical` case is bytes every language reproduces, while a hazard is a
+// value whose bytes DIFFER between languages (Python's float repr against JavaScript's).
+// This router used to refuse every non-integer, including the ordinary decimals the contract
+// renders identically everywhere — passing its own test while disagreeing with the wire.
+//
+// What a hazard actually demands is narrower and stranger: this runtime must never produce
+// the bytes PYTHON produces for one. Three of them it refuses outright (exponent notation, an
+// integer past 2^53). The other five it cannot even see: a JSON file cannot carry Python's
+// `1.0` apart from `1`, so by the time they are parsed here they ARE integers, and the hazard
+// belongs to a signer holding a float in memory, not to this file. Either way the duty is the
+// same, and it is testable: never claim Python's spelling.
+test('a value no two runtimes spell alike is never rendered as Python spells it', () => {
+  const hazards = (V.numberHazards ?? []).filter((h) => h.signMustNotEmit);
+  assert.ok(hazards.length >= 8, `only ${hazards.length} hazards to check`);
+  for (const h of hazards) {
+    let out = null;
+    try { out = canonicalJSON(h.payload); } catch { out = null; }   // refusing outright is the strongest answer
+    assert.notEqual(out, h.pythonCanonical, `${h.name}: this runtime must not claim to produce Python's bytes`);
+  }
 });
 
 test('the six-field signing payload is byte-identical to the door\'s', () => {

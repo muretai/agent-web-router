@@ -207,9 +207,12 @@ To continue a conversation, pass the `contextId` a verified reply carried back o
 knock with `--context <id>` — it is one of the six signed fields, so the door's verifier
 sees it under your signature, not beside it. The printed reply names the id.
 
-The signing bytes are checked against the A2A door conformance vectors in `test/`
-(canonical JSON, the six-field payload, did:key derivation, the envelopes a door must
-refuse) — any site-side runtime that answers the same contract, one set of bytes.
+The signing bytes are not written here. `wire.mjs` is the wire layer of Agent Entry —
+canonical JSON, `did:key`, the six-field payload, the signed card envelope — vendored
+verbatim from [agent-wire](https://github.com/muretai/agent-wire), which publishes those
+bytes on their own, and checked against the golden vectors it publishes with them
+(`test/wire_vectors.json`, including the envelopes a door must refuse). One set of bytes,
+whichever runtime answers the contract; `npm test` proves this copy is unedited.
 
 ## Handoff
 

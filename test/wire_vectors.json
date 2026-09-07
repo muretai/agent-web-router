@@ -1,5 +1,5 @@
 {
-  "note": "Golden wire vectors for an Agent Entry implementation. Reproduce every `canonical`, `did`, `signingPayload` and `bindingPayload` field BYTE-FOR-BYTE, and REFUSE every case under `reject`. A drift does not throw: it silently makes your signatures unverifiable by everyone else, and an implementation that refuses nothing passes every positive vector in this file. Header and URL values inside a signed vector are OPAQUE TEST DATA covered by that vector's signature: reproduce them verbatim. Substituting your own host there does not make the case yours, it makes it fail.",
+  "note": "Golden WIRE vectors. Every non-Python client (muretai-ios-poc Sources/SeamKit, muretai-android-poc seam/) MUST reproduce every `canonical` / `did` / `signingPayload` / `bindingPayload` field BYTE-FOR-BYTE. A drift does not throw — it silently makes that client's signatures unverifiable. Regenerate: python3 test_wire_vectors.py --regen",
   "protocolVersion": "0.2",
   "canonicalSpec": "python json.dumps(sort_keys=True, separators=(',',':'), ensure_ascii=False).encode('utf-8')",
   "timestampNote": "Timestamps in signed payloads are INTEGER epoch seconds — this is the CONTRACT, not a convenience of these vectors. It used to be the latter: core minted floats and the vectors side-stepped them, which meant a client could pass every vector here and still be unable to verify a real message from a Python node. `crypto.signing_payload` does not cast, so the type on the wire IS the type in the signed bytes, and a float there is bytes no other language can reproduce (Python's shortest-round-trip repr). Since 2026-07-17 core mints ints (shared/protocol.Message, cardpub publishers). Clients: send ints; keep VERIFYING whatever type arrives — an older node still sends floats and its signature is over those exact bytes. Never coerce inside a payload builder.",
@@ -321,6 +321,22 @@
       "signingPayload": "{\"contextId\":\"c1\",\"from\":\"did:key:z6MkeTG3bFFSLYVU7VqhgZxqr6YzpaGrQtFMh1uvqGy1vDnP\",\"messageId\":\"m1\",\"text\":\"\",\"timestamp\":0,\"to\":\"did:key:z6MkwgaR63138bEEgad7uk993KMX54vBA6KTB4sFhCPnSB2e\"}"
     }
   ],
+  "binding": [
+    {
+      "name": "plain",
+      "rootDid": "did:key:zDnaeQRywL8RCtEJDKtCyC1VdhMZrFLqPnRJ6udCLK3MvA4ut",
+      "deviceDid": "did:key:z6MkeTG3bFFSLYVU7VqhgZxqr6YzpaGrQtFMh1uvqGy1vDnP",
+      "ts": 1752451200,
+      "bindingPayload": "{\"deviceDid\":\"did:key:z6MkeTG3bFFSLYVU7VqhgZxqr6YzpaGrQtFMh1uvqGy1vDnP\",\"rootDid\":\"did:key:zDnaeQRywL8RCtEJDKtCyC1VdhMZrFLqPnRJ6udCLK3MvA4ut\",\"ts\":1752451200}"
+    },
+    {
+      "name": "zero-ts",
+      "rootDid": "did:key:zDnaeQRywL8RCtEJDKtCyC1VdhMZrFLqPnRJ6udCLK3MvA4ut",
+      "deviceDid": "did:key:z6MkeTG3bFFSLYVU7VqhgZxqr6YzpaGrQtFMh1uvqGy1vDnP",
+      "ts": 0,
+      "bindingPayload": "{\"deviceDid\":\"did:key:z6MkeTG3bFFSLYVU7VqhgZxqr6YzpaGrQtFMh1uvqGy1vDnP\",\"rootDid\":\"did:key:zDnaeQRywL8RCtEJDKtCyC1VdhMZrFLqPnRJ6udCLK3MvA4ut\",\"ts\":0}"
+    }
+  ],
   "bindingV2": {
     "checkNow": 1784273741,
     "cases": [
@@ -410,6 +426,285 @@
       }
     ]
   },
+  "ownerState": {
+    "cases": [
+      {
+        "name": "genesis-empty",
+        "rootDid": "did:key:z6MkixsGj3MVGKMug2VMC2JbtzX3UjaAcfRs7G1RjbSnZJaH",
+        "ownerSeed": "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+        "epoch": 0,
+        "ts": 1784273681,
+        "statePayload": "{\"epoch\":0,\"revoked\":[],\"rootDid\":\"did:key:z6MkixsGj3MVGKMug2VMC2JbtzX3UjaAcfRs7G1RjbSnZJaH\",\"ts\":1784273681,\"typ\":\"muretai/ownerstate/1\"}",
+        "record": {
+          "typ": "muretai/ownerstate/1",
+          "rootDid": "did:key:z6MkixsGj3MVGKMug2VMC2JbtzX3UjaAcfRs7G1RjbSnZJaH",
+          "epoch": 0,
+          "revoked": [],
+          "ts": 1784273681,
+          "sig": "PGKDPD461kiNalvKMp8Yk9SnFuuZP1exmgM7rps/2D/jO2jjB2XnHhxy46c7Glkt3yevzIRiURjkJdmBMvatBQ=="
+        }
+      },
+      {
+        "name": "two-revoked",
+        "rootDid": "did:key:z6MkixsGj3MVGKMug2VMC2JbtzX3UjaAcfRs7G1RjbSnZJaH",
+        "ownerSeed": "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+        "epoch": 3,
+        "ts": 1784273681,
+        "statePayload": "{\"epoch\":3,\"revoked\":[\"did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2\",\"did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK\"],\"rootDid\":\"did:key:z6MkixsGj3MVGKMug2VMC2JbtzX3UjaAcfRs7G1RjbSnZJaH\",\"ts\":1784273681,\"typ\":\"muretai/ownerstate/1\"}",
+        "record": {
+          "typ": "muretai/ownerstate/1",
+          "rootDid": "did:key:z6MkixsGj3MVGKMug2VMC2JbtzX3UjaAcfRs7G1RjbSnZJaH",
+          "epoch": 3,
+          "revoked": [
+            "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+            "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK"
+          ],
+          "ts": 1784273681,
+          "sig": "8gExY1GnQu/3eZ8JLFwxwiRiKNUwssou/ewVR0bESsLmFm020UAdgROzQraIqdw5rOeAfcUccPbYi+9/8egqAA=="
+        }
+      }
+    ],
+    "reject": [
+      {
+        "name": "float-ts",
+        "category": "float-ts",
+        "mustReject": true,
+        "input": {
+          "typ": "muretai/ownerstate/1",
+          "rootDid": "did:key:z6MkixsGj3MVGKMug2VMC2JbtzX3UjaAcfRs7G1RjbSnZJaH",
+          "epoch": 3,
+          "revoked": [
+            "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+            "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK"
+          ],
+          "ts": 1784273681.0,
+          "sig": "+yy0IUqg8WELkrScCln3uT+bOeeKpG0GCKkz+8wAxiwNr/Cnc9h3y94lPo+iEpy+1XtC+16wtnfrxyg8ke6hBQ=="
+        },
+        "note": "ts is 1784273681.0 and the signature is GENUINE over those float bytes. Reject on the type, before any crypto: a float repr is bytes only Python reproduces, so accepting it forks the contract (see timestampNote)."
+      },
+      {
+        "name": "unsorted-revoked",
+        "category": "non-canonical",
+        "mustReject": true,
+        "input": {
+          "typ": "muretai/ownerstate/1",
+          "rootDid": "did:key:z6MkixsGj3MVGKMug2VMC2JbtzX3UjaAcfRs7G1RjbSnZJaH",
+          "epoch": 3,
+          "revoked": [
+            "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+            "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2"
+          ],
+          "ts": 1784273681,
+          "sig": "joYIX9TnlyOGbmgxcELqeqGu7GmssDbMAwyF7ng/ZDQn77gSqSQ3z9e3hqCI5amRgqTFtUqgjP0knGiMsE55Bw=="
+        },
+        "note": "the same two devices in a non-canonical order, signed GENUINELY over those bytes. `revoked` is de-duplicated and sorted at the mint point, so a re-ordered or padded spelling is a SECOND valid-looking record for one decision — refuse it rather than normalizing it, or an attacker can mint unlimited distinct records at the same epoch."
+      },
+      {
+        "name": "wrong-typ",
+        "category": "wrong-typ",
+        "mustReject": true,
+        "input": {
+          "typ": "muretai/keystate/1",
+          "rootDid": "did:key:z6MkixsGj3MVGKMug2VMC2JbtzX3UjaAcfRs7G1RjbSnZJaH",
+          "epoch": 3,
+          "revoked": [
+            "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+            "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK"
+          ],
+          "ts": 1784273681,
+          "sig": "FMtmeFcutPPvk/MQphhhxQMXI+SxFDSQSyU7Jq0ZC333tVUEGyOKlHRtk0uzyfob3O/2itxtKIoPuOSotfBmDw=="
+        },
+        "note": "typ says muretai/keystate/1 and the signature is genuine over those bytes. `typ` is INSIDE the signed payload precisely so another artifact type can never be replayed as a revocation list — match it exactly, before the signature."
+      },
+      {
+        "name": "foreign-signer",
+        "category": "wrong-signer",
+        "mustReject": true,
+        "input": {
+          "typ": "muretai/ownerstate/1",
+          "rootDid": "did:key:z6MkixsGj3MVGKMug2VMC2JbtzX3UjaAcfRs7G1RjbSnZJaH",
+          "epoch": 3,
+          "revoked": [
+            "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+            "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK"
+          ],
+          "ts": 1784273681,
+          "sig": "zzxOInqJucAlZ2ncWJg4gk+YBWmrxAAuWPPnKbEcL2haiBSFTD+Le7YM0qsMosXg+kXZ/qv5fgIclHDduvMwCw=="
+        },
+        "note": "a structurally perfect record signed by a key that is NOT the rootDid it claims. An OwnerState is only ever authority over its OWN account: verify the signature under the key derived from `rootDid`, never under any key the record supplies. The relay refuses this at deposit with 403 for the same reason."
+      },
+      {
+        "name": "missing-sig",
+        "category": "missing-sig",
+        "mustReject": true,
+        "input": {
+          "typ": "muretai/ownerstate/1",
+          "rootDid": "did:key:z6MkixsGj3MVGKMug2VMC2JbtzX3UjaAcfRs7G1RjbSnZJaH",
+          "epoch": 3,
+          "revoked": [
+            "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+            "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK"
+          ],
+          "ts": 1784273681
+        },
+        "note": "every declared field is intact and `sig` is absent. There is no unsigned form of this record — an unsigned revocation list would let anyone disown anyone."
+      }
+    ]
+  },
+  "ownerStateNote": "shared/ownerstate.py. `epoch` is the ONLY ordering signal — strictly greater wins, an equal or lower one is refused whatever its clock says (the resolver's rule, not the verifier's: the verifier holds no pinned state, so it answers only 'is this authentic', never 'is this newer'). `revoked` is de-duplicated, sorted and BOUNDED at the mint point; a non-canonical spelling is refused rather than normalized. `epoch`/`ts` are integers (timestampNote). REVOCATION-ONLY BY DESIGN: an owner never publishes the devices it HAS — that would be a public deviceDid->owner reverse map for anyone who knows a DID — only the ones it has taken away. Unknown top-level keys are IGNORED by the verifier and the signature covers the declared fields the record carries, so a future field can be added without invalidating any record minted today.",
+  "relay": {
+    "seedA": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "seedB": "0707070707070707070707070707070707070707070707070707070707070707",
+    "send": [
+      {
+        "name": "plain",
+        "to": "did:key:z6MkvDqGT54cXesYGvABpF1UapVNwjCqRcafi4Px6Thv5T3Z",
+        "from": "did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd",
+        "id": "0123456789abcdef",
+        "blob": "c2VhbGVkLWJsb2I=",
+        "sendSigMsg": "did:key:z6MkvDqGT54cXesYGvABpF1UapVNwjCqRcafi4Px6Thv5T3Z|did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd|0123456789abcdef|c2VhbGVkLWJsb2I=",
+        "sig": "uVzQooypEvIlFo8B9LgA+Iypo2YQ/2TEDFbUqqgaw7JwtqV/EAf+xrnjLssscdc/yQKRetDqFkcc1fCRQGbrAg=="
+      },
+      {
+        "name": "empty-blob",
+        "to": "did:key:z6MkvDqGT54cXesYGvABpF1UapVNwjCqRcafi4Px6Thv5T3Z",
+        "from": "did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd",
+        "id": "id-1",
+        "blob": "",
+        "sendSigMsg": "did:key:z6MkvDqGT54cXesYGvABpF1UapVNwjCqRcafi4Px6Thv5T3Z|did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd|id-1|",
+        "sig": "Gsw6ZoDhGHZ2CvkWYDyFijuz+1At97Odh0wBPuYmwgBJoLOIEtx8APzBCANmCqKcCHahp3tHofkKzQ2IWIauAA=="
+      },
+      {
+        "name": "non-ascii-id",
+        "to": "did:key:z6MkvDqGT54cXesYGvABpF1UapVNwjCqRcafi4Px6Thv5T3Z",
+        "from": "did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd",
+        "id": "群-1",
+        "blob": "eA==",
+        "sendSigMsg": "did:key:z6MkvDqGT54cXesYGvABpF1UapVNwjCqRcafi4Px6Thv5T3Z|did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd|群-1|eA==",
+        "sig": "woopZVHRmQrik+PC42Q06BReyXklqVof/CmdXBr33vMHUbNXVTrKWqigMY4aMgyX0LIN36eYVsaoV3nIecosCw=="
+      }
+    ],
+    "listen": [
+      {
+        "name": "plain",
+        "did": "did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd",
+        "minute": 29740853,
+        "relayUrl": "https://muretai.com",
+        "origin": "https://muretai.com",
+        "listenTokenMsg": "listen:did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd:29740853:https://muretai.com",
+        "token": "V4QyEeIpT6KU5/8oQcZ0q8x+PCfmDfrSkwN+bSII/T8pQKqOiky3d/MumJ7EOKofKvm1Loqoh1lFPMedb6OxBw=="
+      },
+      {
+        "name": "zero-minute",
+        "did": "did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd",
+        "minute": 0,
+        "relayUrl": "https://muretai.com",
+        "origin": "https://muretai.com",
+        "listenTokenMsg": "listen:did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd:0:https://muretai.com",
+        "token": "hhsBDkbWyHZVk7CJ8dGrloTPLF+xo7B+7Fu5XknlGiln9EqhWnVhSzBM+iYBcVsABbSlAN6h86j7QSI3Gt+FCA=="
+      },
+      {
+        "name": "same-origin-different-spelling",
+        "did": "did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd",
+        "minute": 29740853,
+        "relayUrl": "HTTPS://Muretai.com:443/",
+        "origin": "https://muretai.com",
+        "listenTokenMsg": "listen:did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd:29740853:https://muretai.com",
+        "token": "V4QyEeIpT6KU5/8oQcZ0q8x+PCfmDfrSkwN+bSII/T8pQKqOiky3d/MumJ7EOKofKvm1Loqoh1lFPMedb6OxBw=="
+      },
+      {
+        "name": "explicit-port",
+        "did": "did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd",
+        "minute": 29740853,
+        "relayUrl": "http://127.0.0.1:9000",
+        "origin": "http://127.0.0.1:9000",
+        "listenTokenMsg": "listen:did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd:29740853:http://127.0.0.1:9000",
+        "token": "L0VQIYuVRQ4GIWmZeKmn5V6oPsXzP3UY+6Z+Nah/a4nP16jFtxAawFA8tGIbMqDGfCJkU+gOILDQyA1ubgSDCg=="
+      }
+    ]
+  },
+  "cryptobox": {
+    "senderSeed": "0303030303030303030303030303030303030303030303030303030303030303",
+    "senderEncPub": "142f4b6e50c280a34ceb67ec316947cbd75071c939c19e4cc1435c5f387b6832",
+    "recipientSeed": "0909090909090909090909090909090909090909090909090909090909090909",
+    "recipientEncPub": "001851fc2f06962aca5648fca7ad8fcb032ce8738791471b6489b7571acf9829",
+    "note": "open_box(recipientSeed, senderEncPub, blob) == plaintext. seal() is NOT pinned — it uses a random nonce, so its output is not reproducible. A client proves that direction with its own round-trip against core; this pins the direction that matters, that a client can OPEN what core sealed.",
+    "open": [
+      {
+        "name": "plain",
+        "blob": "YYrXndd8212cUzJ2A+sWWspUASAfIn2ipMdHcTh3y+Ir",
+        "plaintextHex": "68656c6c6f"
+      },
+      {
+        "name": "non-ascii",
+        "blob": "58o9qnvehBofRDrqZH+xfU+SdmLFB7AlKQt1o0U6bsIWapNjAu5xmA==",
+        "plaintextHex": "e7bea4e3828ce3819fe38184"
+      },
+      {
+        "name": "empty",
+        "blob": "Aj7TqCyAdxO3dtdcJ8848Omz3oxT7o2N0mdQSw==",
+        "plaintextHex": ""
+      }
+    ]
+  },
+  "invite": [
+    {
+      "name": "relay-only",
+      "card": {
+        "v": 1,
+        "did": "did:key:z6MkmNL6xksdEJENGk9Z1qqGsY5njKQdjU1UhnUEUvWyQUVX",
+        "name": "Apple Mini",
+        "specialty": "general",
+        "url": "",
+        "relay": "https://relay.example",
+        "enc_pub": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "nonce": "n1",
+        "exp": "2026-07-23T09:59:45Z"
+      },
+      "invitePayload": "{\"did\":\"did:key:z6MkmNL6xksdEJENGk9Z1qqGsY5njKQdjU1UhnUEUvWyQUVX\",\"enc_pub\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"exp\":\"2026-07-23T09:59:45Z\",\"name\":\"Apple Mini\",\"nonce\":\"n1\",\"relay\":\"https://relay.example\",\"specialty\":\"general\",\"url\":\"\",\"v\":1}",
+      "sig": "dCnQge2v8T+5Bohexxn693umPeh9qS0if6Sbt87P065Bx5mMe+Eqg1HIKxDQD3pSSlSZPNXWR0N5J6mNvjMXCw=="
+    },
+    {
+      "name": "direct-url",
+      "card": {
+        "v": 1,
+        "did": "did:key:z6MkmNL6xksdEJENGk9Z1qqGsY5njKQdjU1UhnUEUvWyQUVX",
+        "name": "Node",
+        "specialty": "photography",
+        "url": "http://127.0.0.1:8001/",
+        "nonce": "n2",
+        "exp": "2026-07-23T09:59:45Z"
+      },
+      "invitePayload": "{\"did\":\"did:key:z6MkmNL6xksdEJENGk9Z1qqGsY5njKQdjU1UhnUEUvWyQUVX\",\"exp\":\"2026-07-23T09:59:45Z\",\"name\":\"Node\",\"nonce\":\"n2\",\"specialty\":\"photography\",\"url\":\"http://127.0.0.1:8001/\",\"v\":1}",
+      "sig": "201cNSi7s3mkRigbONcIKMT2yBCHT/j6uzVwt3dtyfJxcyqQOvaONgJFpp2CjaeofB4CH78lDb8xImV2qQTJBA=="
+    }
+  ],
+  "cardpub": [
+    {
+      "name": "relay-only",
+      "card": {
+        "did": "did:key:z6MkpFkurpyZgyna5SAfLpvdzp7W6cvdc1fn9YECrwv3AMbF",
+        "name": "Node",
+        "url": "",
+        "relay": "https://relay.example",
+        "enc_pub": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "ts": 1784273681,
+      "envelopePayload": "{\"card\":{\"did\":\"did:key:z6MkpFkurpyZgyna5SAfLpvdzp7W6cvdc1fn9YECrwv3AMbF\",\"enc_pub\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"name\":\"Node\",\"relay\":\"https://relay.example\",\"url\":\"\"},\"ts\":1784273681,\"typ\":\"agentcard\",\"v\":1}",
+      "sig": "Ryrhh/k3UvsVHF4kR1gLOhinZMtKNWcQuvMHSWZ/UVLU34XJ0NmSXh3QyUiqpXuQdoU09F8DLgkbXEEPcJn0AA=="
+    },
+    {
+      "name": "with-url",
+      "card": {
+        "did": "did:key:z6MkpFkurpyZgyna5SAfLpvdzp7W6cvdc1fn9YECrwv3AMbF",
+        "name": "Node",
+        "url": "http://127.0.0.1:8001/"
+      },
+      "ts": 0,
+      "envelopePayload": "{\"card\":{\"did\":\"did:key:z6MkpFkurpyZgyna5SAfLpvdzp7W6cvdc1fn9YECrwv3AMbF\",\"name\":\"Node\",\"url\":\"http://127.0.0.1:8001/\"},\"ts\":0,\"typ\":\"agentcard\",\"v\":1}",
+      "sig": "7NNkIvHLZ8CgjlHXsTaGRYfmmKhKLpdaRGw0dX3ztbrY05wyaWBN+5RlM4vLPxeggSMb+VxYIQ0pgfcONK7zDQ=="
+    }
+  ],
   "domainLinkage": [
     {
       "name": "plain",
@@ -511,32 +806,6 @@
       "signature": "sig1=:xn3Gf4Niw6pEOIKZD9NC85a+AGbY6S7oBeBn77Li4vVm7TeFJHpeWqvws8n4JCIqIN1MXPjZAbOQmloCJd/3CQ==:"
     }
   },
-  "cardpub": [
-    {
-      "name": "relay-only",
-      "card": {
-        "did": "did:key:z6MkpFkurpyZgyna5SAfLpvdzp7W6cvdc1fn9YECrwv3AMbF",
-        "name": "Node",
-        "url": "",
-        "relay": "https://relay.example",
-        "enc_pub": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-      },
-      "ts": 1784273681,
-      "envelopePayload": "{\"card\":{\"did\":\"did:key:z6MkpFkurpyZgyna5SAfLpvdzp7W6cvdc1fn9YECrwv3AMbF\",\"enc_pub\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"name\":\"Node\",\"relay\":\"https://relay.example\",\"url\":\"\"},\"ts\":1784273681,\"typ\":\"agentcard\",\"v\":1}",
-      "sig": "Ryrhh/k3UvsVHF4kR1gLOhinZMtKNWcQuvMHSWZ/UVLU34XJ0NmSXh3QyUiqpXuQdoU09F8DLgkbXEEPcJn0AA=="
-    },
-    {
-      "name": "with-url",
-      "card": {
-        "did": "did:key:z6MkpFkurpyZgyna5SAfLpvdzp7W6cvdc1fn9YECrwv3AMbF",
-        "name": "Node",
-        "url": "http://127.0.0.1:8001/"
-      },
-      "ts": 0,
-      "envelopePayload": "{\"card\":{\"did\":\"did:key:z6MkpFkurpyZgyna5SAfLpvdzp7W6cvdc1fn9YECrwv3AMbF\",\"name\":\"Node\",\"url\":\"http://127.0.0.1:8001/\"},\"ts\":0,\"typ\":\"agentcard\",\"v\":1}",
-      "sig": "7NNkIvHLZ8CgjlHXsTaGRYfmmKhKLpdaRGw0dX3ztbrY05wyaWBN+5RlM4vLPxeggSMb+VxYIQ0pgfcONK7zDQ=="
-    }
-  ],
   "epochNote": "NOT bytes, so not pinnable here — and the thing a client is most likely to get wrong. An `epoch` identifies a LISTENER, not a poll: sortable (creation-time+pid), STABLE for that listener's life, greater-wins, older gets HTTP 409. Minting a fresh epoch per poll makes a client supersede its own long-poll and drop mail. Specified in docs/SPECIFICATION.md §relay.",
   "reject": {
     "message": [
@@ -630,6 +899,86 @@
         },
         "recipientDid": "did:key:z6MkknhhwAGsRrcTTthPSsBbQtrNX6CMqt4poro5jdP6uCue",
         "note": "validly signed, but `to` is not us. The signature verifies for the real recipient; a client must still refuse a message not addressed to it."
+      }
+    ],
+    "invite": [
+      {
+        "name": "expired-invite",
+        "category": "expired-invite",
+        "mustReject": true,
+        "input": {
+          "v": 1,
+          "did": "did:key:z6MkmNL6xksdEJENGk9Z1qqGsY5njKQdjU1UhnUEUvWyQUVX",
+          "name": "Node",
+          "specialty": "general",
+          "url": "",
+          "nonce": "n1",
+          "exp": "2026-07-10T00:00:00Z",
+          "sig": "nljWMQDVwzPw8rKEcw8K4NcOCC9g/FU+R19yAmZ1KViDgi2e3yGrGuVbsMN1hz3z82hhzzPK8Bh8aiIoP+PSDQ=="
+        },
+        "checkNow": "2026-07-20T00:00:00Z",
+        "note": "signature is valid; `exp` is in the past relative to checkNow. A leaked/screenshotted old invite must not be honoured — check exp > now."
+      },
+      {
+        "name": "forged-invite",
+        "category": "forged-invite",
+        "mustReject": true,
+        "input": {
+          "v": 1,
+          "did": "did:key:z6MkmNL6xksdEJENGk9Z1qqGsY5njKQdjU1UhnUEUvWyQUVX",
+          "name": "Node",
+          "specialty": "general",
+          "url": "",
+          "nonce": "n1",
+          "exp": "2026-07-23T09:59:45Z",
+          "sig": "kyqikYBL3Pg1ahQVmqMMkEOI31/pRF9i+WX+rQBC1aClHEegsqQkurGRa/uvm07BM08V9q/YQx96U5CK/7roCw=="
+        },
+        "checkNow": "2026-07-20T00:00:00Z",
+        "note": "the card names `did` but is signed by another key — verify the signature under the DID the card claims, exactly as for a message."
+      }
+    ],
+    "claim": [
+      {
+        "name": "claim-unsigned",
+        "category": "claim-unsigned",
+        "mustReject": true,
+        "input": {
+          "method": "onboard/claim",
+          "message": {
+            "from": "did:key:z6Mkj1wKyqJVT26zhRLAVReP2wgeWHKjLzst1qRz68cd55Kp",
+            "to": "did:key:z6MkkBfAKBNKKnAqDCekq181CgEYG7u4aShm7E9yRQtUFbcj",
+            "messageId": "cm1",
+            "contextId": "cc",
+            "timestamp": 1784273681,
+            "text": "onboard/claim",
+            "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          "nonce": "whatever",
+          "name": "Alice",
+          "enc_pub": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "relay": "https://attacker.example"
+        },
+        "note": "a claim's signature must verify (from == signer) BEFORE it can add or overwrite a contact — else a stranger MITMs an existing conversation by overwriting enc_pub/relay."
+      },
+      {
+        "name": "claim-unknown-nonce",
+        "category": "claim-unknown-nonce",
+        "mustReject": true,
+        "input": {
+          "method": "onboard/claim",
+          "message": {
+            "from": "did:key:z6Mkj1wKyqJVT26zhRLAVReP2wgeWHKjLzst1qRz68cd55Kp",
+            "to": "did:key:z6MkkBfAKBNKKnAqDCekq181CgEYG7u4aShm7E9yRQtUFbcj",
+            "messageId": "cm1",
+            "contextId": "cc",
+            "timestamp": 1784273681,
+            "text": "onboard/claim",
+            "sig": "UYqt/DzTjgxM63Jku91EoWDhFktJjVOKbvci71yciX+gZvtMlksu6OwvZWCAhlaSQqrG8Ok7AbvxwJz7FlanAg=="
+          },
+          "nonce": "never-issued-by-this-device",
+          "name": "Alice"
+        },
+        "note": "even a validly-signed claim must present a one-time nonce THIS device issued; an unknown nonce means no invite was ever extended — do not trust."
       }
     ]
   },
