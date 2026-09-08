@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { canonicalJSON, signingPayload, didFromPublicKey, loadKey, verifyEnvelopeSignature, verifyDomainLinkage } from '../agent-web-router.mjs';
+import { canonicalJSON, signingPayload, didFromPublicKey, loadKey, verifyEnvelopeSignature, verifyReply, verifyDomainLinkage } from '../agent-web-router.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const V = JSON.parse(readFileSync(join(HERE, 'wire_vectors.json'), 'utf8'));
@@ -86,6 +86,33 @@ test('every envelope a door must reject is refused here too — and the wrong-re
       // check (verifyReply's `to === myDid`) is what refuses it.
       assert.equal(verifyEnvelopeSignature(input), true, r.name);
       assert.notEqual(input.to, r.recipientDid, r.name);
+      continue;
+    }
+    if (r.name === 'wire-names-its-own-recipient') {
+      // Also a perfectly valid signature — the refusal is again the recipient dimension, and
+      // the bait is an UNSIGNED `recipientDid` equal to the message's own `to`. A verifier
+      // that read the recipient off the wire would compare the message against itself and
+      // always agree. This router cannot: `verifyReply` takes `myDid` from its CALLER and
+      // never looks at the envelope for it. Assert the bait is really there, that the
+      // signature really passes (so a signature-only verifier would wrongly accept), and
+      // that naming a different recipient still refuses.
+      assert.equal(input.recipientDid, input.to, `${r.name}: the bait must equal \`to\``);
+      assert.equal(verifyEnvelopeSignature(input), true, r.name);
+      // Shape the reply exactly as verifyReply reads one, so 'not addressed to you' is the
+      // ONLY reason left. A test whose subject fails for three reasons at once is not
+      // testing the one it is named for.
+      const asReply = {
+        messageId: input.messageId,
+        contextId: input.contextId ?? null,
+        parts: [{ kind: 'text', text: input.text }],
+        metadata: { from: input.from, to: input.to, timestamp: input.timestamp,
+                    sig: input.sig, recipientDid: input.recipientDid },
+      };
+      const mine = verifyReply(asReply, { doorDid: input.from, myDid: input.to, now: input.timestamp });
+      assert.deepEqual(mine.reasons, [], `${r.name}: the real recipient must find no fault`);
+      const stranger = verifyReply(asReply, { doorDid: input.from, myDid: 'did:key:zStranger', now: input.timestamp });
+      assert.deepEqual(stranger.reasons, ['not addressed to you'],
+                       `${r.name}: a door that is not the recipient must refuse, and for THAT reason alone`);
       continue;
     }
     assert.equal(verifyEnvelopeSignature(input), false, `${r.name} must be refused`);
