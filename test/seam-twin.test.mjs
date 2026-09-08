@@ -34,8 +34,8 @@ const SEAM_ROOT = resolve(ROOT, process.env.MURETAI_AGENT_SEAM || '../agent-seam
 const SIBLING = existsSync(join(SEAM_ROOT, '.git'));
 
 /** agent-seam v0.2.0 (201ab05), vendored 2026-09-07. sha256 of each file as written here. */
-const PINNED_REF = 'v0.2.0';
-const PINNED_COMMIT = '201ab05e93745864e02a8476d75bf41e87725f16';
+const PINNED_REF = 'v0.2.1';
+const PINNED_COMMIT = 'f93d595ec02d007ca5fff80b583cc1710d4d1734';
 const PINNED = [
   { mine: 'seam.mjs', theirs: 'js/seam.mjs', sha: '01878be5b0b4954c089e9e5cc9d5da155060924660b88736f8537f23cdc2e272' },
   { mine: 'test/wire_vectors.json', theirs: 'vectors/wire_vectors.json', sha: 'e03e083f644167a67132638ab74fd1c62667db2733fb58466dce2644feca39c2' },
