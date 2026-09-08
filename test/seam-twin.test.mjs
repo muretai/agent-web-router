@@ -33,12 +33,12 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SEAM_ROOT = resolve(ROOT, process.env.MURETAI_AGENT_SEAM || '../agent-seam');
 const SIBLING = existsSync(join(SEAM_ROOT, '.git'));
 
-/** agent-seam v0.3.0 (dcefaae), vendored 2026-09-08. sha256 of each file as written here. */
-const PINNED_REF = 'v0.3.0';
-const PINNED_COMMIT = 'dcefaaecb7b92e222af820fca45bc56f90e22016';
+/** agent-seam v0.3.1 (ad3d318), vendored 2026-09-08. sha256 of each file as written here. */
+const PINNED_REF = 'v0.3.1';
+const PINNED_COMMIT = 'ad3d318f869d379514e0f815a3d4bd24d9d01088';
 const PINNED = [
-  { mine: 'seam.mjs', theirs: 'js/seam.mjs', sha: '8c8d04d8c59cec2aae2337e9d8ef90361b199c0b969dd1ea9c0741b318f6dbf7' },
-  { mine: 'test/wire_vectors.json', theirs: 'vectors/wire_vectors.json', sha: '31d256cb4f360481865551dd63492fbb5a955a2c146c870b33133ffb30704841' },
+  { mine: 'seam.mjs', theirs: 'js/seam.mjs', sha: '56d0ad76f53002aaccf61ae735d446dd13043014b8a7afee22a8386af9fabe01' },
+  { mine: 'test/wire_vectors.json', theirs: 'vectors/wire_vectors.json', sha: '817224bce19232d7e353170c955197a2391a199edf07d62ef87fb8a7b2f34fa0' },
 ];
 
 // A floor: the two files this package vendors are named HERE, so an emptied PINNED list
