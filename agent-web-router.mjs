@@ -424,6 +424,48 @@ export function structuredDataTypes(html) {
   return [...types];
 }
 
+/**
+ * The bytes of an UNPADDED base64url string that has exactly ONE spelling, or null.
+ *
+ * The seam carries this rule as `strictB64Url` (seam.mjs, "the discarded trailing bits") and
+ * does not export it, so it is restated here — once — for every untrusted base64url this file
+ * decodes. The accepted set must stay character for character the seam's: a router that takes
+ * one string the seam refuses, or refuses one it takes, IS the split this rule exists to close.
+ * FOLLOW-UP: ask upstream (agent-seam) to export `strictB64Url`; then this copy is deleted and
+ * imported instead, and nothing about the rule changes.
+ *
+ *   1. a string, else null;
+ *   2. `[A-Za-z0-9_-]` only — "+", "/" and "=" refused, so the input is unpadded base64url
+ *      or nothing;
+ *   3. `length % 4 !== 1` — one leftover character carries 6 bits and no byte;
+ *   4. decode, RE-ENCODE UNPADDED, and demand the input back character for character.
+ *
+ * Rule 4 is the leg this file was missing. base64url spends 6 bits per character on 8-bit
+ * bytes, so unless the length is a multiple of 4 the LAST character carries bits the decoder
+ * discards: a 64-byte Ed25519 signature is 86 characters — 516 bits carrying 512 — and the
+ * final character's low FOUR bits are never read. Sixteen alphabet-clean strings decode to the
+ * identical 64 bytes, and with only an alphabet test in the way all sixteen verified. Every
+ * encoder in every language writes those bits as zero, so no honestly-produced token moves;
+ * only a hand-edited residual fails, which is exactly the input that had no honest way to exist.
+ *
+ * The EMPTY STRING PASSES, exactly as it does in the seam: it decodes to zero bytes and
+ * re-encodes to itself. A codec gate must not be the thing that decides how long something is
+ * allowed to be — that belongs to the caller that knows what the thing is (see the segment
+ * check in `verifyDomainLinkage`).
+ *
+ * Rule 3 is subsumed by rule 4 — an unpadded encoding's length is never ≡ 1 (mod 4) — and is
+ * kept anyway, as the seam keeps it: cheaper than the decode, and it states the format's own
+ * reason rather than a consequence of it.
+ */
+const B64URL_ALPHABET = /^[A-Za-z0-9_-]*$/;
+function strictB64Url(value) {
+  if (typeof value !== 'string') return null;
+  if (!B64URL_ALPHABET.test(value) || value.length % 4 === 1) return null;
+  const raw = Buffer.from(value, 'base64url');
+  if (raw.toString('base64url') !== value) return null;   // the discarded trailing bits
+  return raw;
+}
+
 /** Does /.well-known/did-configuration.json (Well Known DID Configuration) name `did`?
  *  Entries are JWTs or JSON-LD credentials; only the NAMING is checked here, not the
  *  proof — and the result says so. */
@@ -434,7 +476,9 @@ export function didConfigurationNames(doc, did) {
       if (typeof e === 'string') {
         const parts = e.split('.');
         if (parts.length < 2) continue;
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+        const raw = strictB64Url(parts[1]);
+        if (raw === null) continue;   // one entry, one spelling — the same rule the proof uses
+        const payload = JSON.parse(raw.toString('utf8'));
         if (payload.iss === did || payload.sub === did || payload.vc?.credentialSubject?.id === did) return true;
       } else if (e && typeof e === 'object') {
         const issuer = typeof e.issuer === 'string' ? e.issuer : e.issuer?.id;
@@ -453,8 +497,9 @@ export function didConfigurationNames(doc, did) {
  *
  * The signature covers the ASCII TEXT of `<b64url header>.<b64url payload>` — never a
  * re-serialization of what those segments decode to. base64url is UNPADDED, and a padded
- * or standard-alphabet spelling is refused, not repaired: Node's own decoder is lenient,
- * so the shape is gated by regex before any decode. `exp` is mandatory — a domain is
+ * or standard-alphabet spelling is refused, not repaired: Node's own decoder is lenient, so
+ * every segment passes `strictB64Url` first — alphabet, length, AND a re-encode that must
+ * return the input character for character, so one credential has exactly one token string. `exp` is mandatory — a domain is
  * leased, not owned, so a credential with no end date is indefinite authority over a name
  * the issuer may no longer hold. `kid` is not enforced: the verifying key comes from `did`
  * itself (with did:key the DID IS the key), so a kid check would only restate it.
@@ -467,13 +512,23 @@ export function verifyDomainLinkage(token, { did, origin, now = Math.floor(Date.
   try {
     if (typeof token !== 'string') { out.reasons.push('not a compact JWS string'); return out; }
     const segs = token.split('.');
-    if (segs.length !== 3 || !segs.every((x) => /^[A-Za-z0-9_-]+$/.test(x))) {
+    // Three segments, each NON-EMPTY and each with exactly one spelling. The two halves are
+    // deliberately separate: the length is this caller's business (a compact JWS under EdDSA
+    // has no empty header, payload or signature), the spelling is `strictB64Url` and nothing
+    // weaker. An alphabet-only test used to stand here, and it let through every re-spelling
+    // of the SIGNATURE segment — 86 characters, four unread bits in the last one, sixteen
+    // strings decoding to the same 64 bytes, all sixteen verifying. Header and payload are
+    // not malleable that way (the signing input is their literal text, so a re-spelling
+    // breaks the signature), but the gate is applied to all three: the rule is about what a
+    // segment IS, not about which segment happens to be exploitable this year.
+    const bytes = segs.length === 3 ? segs.map((x) => (x.length > 0 ? strictB64Url(x) : null)) : [];
+    if (bytes.length !== 3 || bytes.some((b) => b === null)) {
       out.reasons.push('not unpadded base64url compact JWS — refused, not repaired');
       return out;
     }
-    const [h, pl, sg] = segs;
-    const header = JSON.parse(Buffer.from(h, 'base64url').toString('utf8'));
-    const payload = JSON.parse(Buffer.from(pl, 'base64url').toString('utf8'));
+    const [h, pl] = segs;
+    const header = JSON.parse(bytes[0].toString('utf8'));
+    const payload = JSON.parse(bytes[1].toString('utf8'));
     if (header?.alg !== 'EdDSA') out.reasons.push(`alg is ${header?.alg ?? 'absent'}, not EdDSA`);
     const subject = payload?.vc?.credentialSubject;
     if (!(payload?.iss === did && payload?.sub === did && subject?.id === did)) {
@@ -486,7 +541,7 @@ export function verifyDomainLinkage(token, { did, origin, now = Math.floor(Date.
     if (!Number.isSafeInteger(payload?.exp)) out.reasons.push('exp missing or not an integer — a domain is leased, not owned');
     else if (now > payload.exp) out.reasons.push('expired');
     if (payload?.nbf !== undefined && (!Number.isSafeInteger(payload.nbf) || now < payload.nbf)) out.reasons.push('not yet valid');
-    const sig = Buffer.from(sg, 'base64url');
+    const sig = bytes[2];
     if (sig.length !== 64 || !verifyBytes(publicKeyFromDid(did), sig, Buffer.from(`${h}.${pl}`, 'utf8'))) {
       out.reasons.push("signature does not verify over the JWS signing input under the did's key");
     }

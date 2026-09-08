@@ -130,7 +130,7 @@ test('the Domain Linkage credential verifies byte-for-byte against the vectors',
   }
 });
 
-test('a Domain Linkage credential is refused for the right reason: wrong origin, expiry, padding, another did, tampering', () => {
+test('a Domain Linkage credential is refused for the right reason: wrong origin, expiry, padding, a re-spelled signature, another did, tampering', () => {
   const c = V.domainLinkage[0];
   const at = c.nbf + 60;
   const origin = `https://${c.domain}`;
@@ -143,6 +143,56 @@ test('a Domain Linkage credential is refused for the right reason: wrong origin,
 
   v = verifyDomainLinkage(c.token + '=', { did: c.did, origin, now: at });
   assert.ok(!v.ok && v.reasons.some((r) => /base64url/.test(r)), `padding is refused, not repaired: ${v.reasons}`);
+
+  // THE SIXTEEN SPELLINGS OF ONE SIGNATURE. The case above passes for a shallow reason — '='
+  // is outside the alphabet — and an alphabet test is all this verifier used to have. A
+  // 64-byte Ed25519 signature is 86 base64url characters: 516 bits carrying 512, so the LAST
+  // character's low FOUR bits are discarded by the decoder and sixteen alphabet-clean strings
+  // decode to the identical 64 bytes. All sixteen used to verify against this very vector.
+  // One credential with sixteen token strings walks around any peer that caches, logs,
+  // de-duplicates or revocation-lists a domain-linkage credential BY the token — and two
+  // routers can disagree about whether they have seen the same credential. Exactly one
+  // spelling re-encodes to itself; exactly one is the credential.
+  const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const [sh, sp, ss] = c.token.split('.');
+  assert.equal(ss.length, 86, 'an Ed25519 signature segment is 86 base64url characters');
+  const keep = B64URL.indexOf(ss[85]) & 0b110000;   // the last character's two DATA bits
+  const sixteen = Array.from({ length: 16 }, (_, i) => ss.slice(0, 85) + B64URL[keep | i]);
+  assert.equal(new Set(sixteen).size, 16, 'sixteen distinct spellings');
+  assert.ok(sixteen.includes(ss), 'the genuine signature must be one of the sixteen');
+  const sigBytes = Buffer.from(ss, 'base64url');
+  let accepted = 0;
+  for (const alt of sixteen) {
+    assert.ok(Buffer.from(alt, 'base64url').equals(sigBytes),
+              `...${alt.slice(-4)} must decode to the same 64 bytes, or this case proves nothing`);
+    const r = verifyDomainLinkage(`${sh}.${sp}.${alt}`, { did: c.did, origin, now: at });
+    if (alt === ss) {
+      assert.deepEqual(r, { ok: true, reasons: [] }, 'the genuine spelling must still verify');
+      accepted += 1;
+      continue;
+    }
+    assert.notEqual(Buffer.from(alt, 'base64url').toString('base64url'), alt,
+                    `...${alt.slice(-4)} must be a residual spelling: it does not re-encode to itself`);
+    // The reason must be the CREDENTIAL's shape and nothing else — not an expiry, not an
+    // origin, not a signature that happened not to verify. A negative case that passes for an
+    // incidental reason is the defect this whole file keeps finding.
+    assert.deepEqual(r.reasons, ['not unpadded base64url compact JWS — refused, not repaired'],
+                     `a re-spelled signature (...${alt.slice(-4)}) must be refused as a malformed credential, and for THAT reason alone`);
+  }
+  assert.equal(accepted, 1, 'exactly one of the sixteen spellings is the credential');
+
+  // Only the SIGNATURE is malleable that way, and that is checked rather than remembered: the
+  // signing input is the LITERAL text of the header and payload segments, so a re-spelling of
+  // either breaks the signature on its own — the gate simply refuses it earlier.
+  const spare = { 0: 1, 2: 4, 3: 2 }[sp.length % 4];
+  const pkeep = B64URL.indexOf(sp[sp.length - 1]) & ~(spare - 1);
+  for (let i = 0; i < spare; i++) {
+    const alt = sp.slice(0, -1) + B64URL[pkeep | i];
+    if (alt === sp) continue;
+    assert.ok(Buffer.from(alt, 'base64url').equals(Buffer.from(sp, 'base64url')), 'same payload bytes');
+    const r = verifyDomainLinkage(`${sh}.${alt}.${ss}`, { did: c.did, origin, now: at });
+    assert.ok(!r.ok, `a re-spelled payload must never verify: ...${alt.slice(-4)} -> ${JSON.stringify(r.reasons)}`);
+  }
 
   v = verifyDomainLinkage(c.token, { did: V.webBotAuth.did, origin, now: at });
   assert.ok(!v.ok && v.reasons.some((r) => /must all be the card's did/.test(r)), `another did: ${v.reasons}`);

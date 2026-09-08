@@ -60,6 +60,61 @@ test('the card-envelope version this router requires is the one the seam signs',
     `the seam signs v=${payload.v}; this router requires v=${CARD_ENVELOPE_VERSION_HERE}`);
 });
 
+// The router carries a second thing the seam pins but does not export: `strictB64Url`, the
+// rule that gives an unpadded base64url string exactly ONE spelling (alphabet, length not
+// congruent to 1 mod 4, and a re-encode that returns the input character for character). The
+// seam keeps it module-private, so `verifyDomainLinkage` restates it — and two copies of one
+// rule are only safe while they accept the SAME SET. A copy that is merely similar is a new
+// split: whichever side is more permissive becomes the hole. Both are lifted out of their
+// source text and compared input by input, so the guarantee is behavioural, not a promise in
+// a comment. When upstream exports `strictB64Url`, delete the router's copy, import it, and
+// this test with it.
+/** The rule as its own source file writes it, lifted out and made callable. The router spells
+ *  the alphabet constant `B64URL_ALPHABET` and the seam spells it `WBA_B64URL`; that rename is
+ *  the ONLY difference either side is allowed. */
+const liftStrictB64Url = (file) => {
+  const src = readFileSync(join(ROOT, file), 'utf8').replace(/B64URL_ALPHABET/g, 'WBA_B64URL');
+  const alphabet = src.match(/const WBA_B64URL = [^\n]*/);
+  const fn = src.match(/function strictB64Url\(value\) \{[\s\S]*?\n\}/);
+  assert.ok(alphabet && fn,
+    `could not find strictB64Url in ${file} — it moved or was renamed. Re-check BY HAND that the `
+    + "router's copy accepts exactly what the seam's does, then repair this lift");
+  // eslint-disable-next-line no-new-func -- the two rules are compared as CODE, on purpose
+  return new Function('Buffer', `${alphabet[0]}\n${fn[0]}\nreturn strictB64Url;`)(Buffer);
+};
+
+test("the router's strictB64Url accepts exactly what the seam's does", () => {
+  const seam = liftStrictB64Url('seam.mjs');
+  const router = liftStrictB64Url('agent-web-router.mjs');
+
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const dirty = [...A, '+', '/', '=', '.', ' ', '\n', 'e\u0301'];
+  const cases = new Set(['']);
+  for (const a of dirty) { cases.add(a); for (const b of dirty) cases.add(a + b); }
+  for (const a of dirty) for (const b of dirty) for (const c of '-_A9+/=') cases.add(a + b + c);
+  // every residue class at every realistic length, 43 (a key) and 86 (a signature) included
+  const run = 'A'.repeat(90);
+  for (let n = 0; n <= 90; n += 1) for (const last of A) cases.add(run.slice(0, n) + last);
+
+  let compared = 0;
+  for (const v of cases) {
+    const a = seam(v);
+    const b = router(v);
+    const same = a === null ? b === null : b !== null && Buffer.compare(a, b) === 0;
+    assert.ok(same, `the two rules disagree about ${JSON.stringify(v)}: seam=${a === null ? 'refused' : a.toString('hex')}, router=${b === null ? 'refused' : b.toString('hex')}`);
+    compared += 1;
+  }
+  for (const v of [null, undefined, 42, 0, {}, [], true, Buffer.from('ab')]) {
+    assert.equal(seam(v) === null, router(v) === null, `the two rules disagree about ${String(v)}`);
+  }
+  assert.ok(compared > 5000, `only ${compared} strings compared`);
+  // The two corner cases the seam spells out, named here so a copy cannot quietly drop either.
+  assert.equal(seam('').length, 0, 'the seam accepts the empty string');
+  assert.equal(router('').length, 0, "the router's copy accepts the empty string too — length is the CALLER's rule");
+  assert.equal(seam('A'), null);
+  assert.equal(router('A'), null, 'a length congruent to 1 mod 4 carries 6 bits and no byte');
+});
+
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const mine = (f) => readFileSync(join(ROOT, f.mine));
 const git = (...a) => execFileSync('git', ['-C', SEAM_ROOT, ...a], { stdio: ['ignore', 'pipe', 'pipe'] });
