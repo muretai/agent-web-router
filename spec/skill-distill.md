@@ -112,7 +112,7 @@ after lift > 0, empty-Distiller lift = 0, and `npm test` green.
    reason, `checkHandoff.refused`. Not an LLM judge of the HTML.
 3. **Construct.** A unified diff against `SKILL.md`, or a note file that
    quotes only the **signed** card. `R` keeps evidence and gaps.
-4. **Verify.** `node --test test/` green. M2 below. Mutation.
+4. **Verify.** `npm test` green. M2 below. Mutation.
 
 ---
 

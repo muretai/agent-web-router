@@ -49,6 +49,17 @@ test('the pin names both vendored files', () => {
   assert.match(PINNED_COMMIT, /^[0-9a-f]{40}$/);
 });
 
+// This router carries one number the seam pins but does not export: the card-envelope version
+// it requires an envelope to declare (see agent-web-router.mjs, "this router's own gate"). A
+// local copy of a contract constant is exactly the drift this repository stopped writing, so
+// it is read back out of the bytes the seam actually signs.
+test('the card-envelope version this router requires is the one the seam signs', async () => {
+  const { CARD_ENVELOPE_VERSION_HERE, cardEnvelopePayload } = await import('../agent-web-router.mjs');
+  const payload = JSON.parse(cardEnvelopePayload({ did: 'did:key:zTest', name: 'x' }, 1788000000));
+  assert.equal(payload.v, CARD_ENVELOPE_VERSION_HERE,
+    `the seam signs v=${payload.v}; this router requires v=${CARD_ENVELOPE_VERSION_HERE}`);
+});
+
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const mine = (f) => readFileSync(join(ROOT, f.mine));
 const git = (...a) => execFileSync('git', ['-C', SEAM_ROOT, ...a], { stdio: ['ignore', 'pipe', 'pipe'] });
