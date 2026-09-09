@@ -22,13 +22,44 @@ import { canonicalJSON, signingPayload, didFromPublicKey, loadKey, verifyEnvelop
 const HERE = dirname(fileURLToPath(import.meta.url));
 const V = JSON.parse(readFileSync(join(HERE, 'wire_vectors.json'), 'utf8'));
 
-test('canonical JSON matches the wire vectors, every case', () => {
-  let checked = 0;
-  for (const c of V.canonical) {
-    assert.equal(canonicalJSON(c.payload), c.canonical, c.name);
-    checked += 1;
+/**
+ * A vendored group, read BY NAME and floored.
+ *
+ * Every assertion in this file lives inside a `for` over a group of `wire_vectors.json`, and
+ * a `for` over nothing passes. `wire_vectors.json` is not ours: it arrives by re-vendoring
+ * from agent-seam, so a group can be renamed, emptied or shortened upstream without a line
+ * of this repository changing — and the suite would keep printing green over the cases it
+ * no longer walks. That is not hypothetical here: the PHP twin's message-reject walk skipped
+ * nine cases for its entire life and looked exactly like a walk that passed.
+ *
+ * So a group is taken by name (a rename is a FAILURE, not a silent zero) and counted against
+ * the number the pinned vendor carries today (an emptying or a shortening is a failure too).
+ * The floor is deliberately the exact current count: growth upstream is welcome and silent,
+ * shrinkage is not. Raising it is a one-line, deliberate act at re-vendor time.
+ */
+function group(path, floor) {
+  const keys = path.split('.');
+  let node = V;
+  let seen = '';
+  for (const key of keys) {
+    seen = seen ? `${seen}.${key}` : key;
+    assert.ok(node !== null && typeof node === 'object' && !Array.isArray(node) && key in node,
+              `wire_vectors.json carries no \`${seen}\` — a re-vendor renamed or dropped the group `
+              + `this suite walks, and a loop over a missing group asserts nothing`);
+    node = node[key];
   }
-  assert.ok(checked >= 14, `only ${checked} canonical vectors checked`);
+  assert.ok(Array.isArray(node), `\`${path}\` is not an array of cases (got ${typeof node})`);
+  assert.ok(node.length >= floor,
+            `\`${path}\` carries ${node.length} case(s), fewer than the ${floor} this suite walked `
+            + `when the floor was set — a re-vendor shortened it and every assertion in the loop `
+            + `below would have passed over nothing`);
+  return node;
+}
+
+test('canonical JSON matches the wire vectors, every case', () => {
+  for (const c of group('canonical', 14)) {
+    assert.equal(canonicalJSON(c.payload), c.canonical, c.name);
+  }
 });
 
 // The refusal duty lives in `numberHazards`, not in `canonical`, and the distinction is the
@@ -44,7 +75,7 @@ test('canonical JSON matches the wire vectors, every case', () => {
 // belongs to a signer holding a float in memory, not to this file. Either way the duty is the
 // same, and it is testable: never claim Python's spelling.
 test('a value no two runtimes spell alike is never rendered as Python spells it', () => {
-  const hazards = (V.numberHazards ?? []).filter((h) => h.signMustNotEmit);
+  const hazards = group('numberHazards', 8).filter((h) => h.signMustNotEmit);
   assert.ok(hazards.length >= 8, `only ${hazards.length} hazards to check`);
   for (const h of hazards) {
     let out = null;
@@ -58,19 +89,22 @@ test('canonical JSON sorts object keys by Unicode code point, not UTF-16 code un
 });
 
 test('the six-field signing payload is byte-identical to the door\'s', () => {
-  for (const e of V.envelope) {
+  for (const e of group('envelope', 4)) {
     assert.equal(signingPayload(e), e.signingPayload, e.name);
   }
 });
 
 test('did:key derivation matches for every ed25519 vector', () => {
   let checked = 0;
-  for (const d of V.did) {
-    if (d.curve !== 'ed25519') continue;
+  for (const d of group('did', 10)) {
+    if (d.curve !== 'ed25519') continue;      // the p256 half is the seam's, not this router's
     assert.equal(didFromPublicKey(d.publicHex), d.did);
     checked += 1;
   }
-  assert.ok(checked >= 1);
+  // The group floor above counts what is VENDORED; this counts what is actually DERIVED. A
+  // re-vendor that re-labelled every ed25519 vector `p256` would clear the group floor and
+  // still leave this loop deriving nothing.
+  assert.equal(checked, 4, `only ${checked} ed25519 did:key vectors derived, expected 4`);
 });
 
 test('a seed loads to the DID the vectors say it controls', () => {
@@ -79,7 +113,7 @@ test('a seed loads to the DID the vectors say it controls', () => {
 });
 
 test('every envelope a door must reject is refused here too — and the wrong-recipient one is refused for the RIGHT reason', () => {
-  for (const r of V.reject.message) {
+  for (const r of group('reject.message', 9)) {
     const input = r.input;
     if (r.name === 'wrong-recipient') {
       // A perfectly valid signature, for someone else: the signature passes, the recipient
@@ -123,7 +157,7 @@ test('the Domain Linkage credential verifies byte-for-byte against the vectors',
   // The vectors' exp (2025-11-09) is deliberately in the past by now, which is exactly why
   // the verifier takes an injected `now`: a verifier reading the wall clock could never
   // check these bytes again. `signingInput` is the token's first two segments AS TEXT.
-  for (const c of V.domainLinkage) {
+  for (const c of group('domainLinkage', 3)) {
     assert.equal(c.token.split('.').slice(0, 2).join('.'), c.signingInput, c.name);
     const v = verifyDomainLinkage(c.token, { did: c.did, origin: `https://${c.domain}`, now: c.nbf + 60 });
     assert.deepEqual(v, { ok: true, reasons: [] }, `${c.name}: ${v.reasons}`);
@@ -131,7 +165,7 @@ test('the Domain Linkage credential verifies byte-for-byte against the vectors',
 });
 
 test('a Domain Linkage credential is refused for the right reason: wrong origin, expiry, padding, a re-spelled signature, another did, tampering', () => {
-  const c = V.domainLinkage[0];
+  const c = group('domainLinkage', 3)[0];
   const at = c.nbf + 60;
   const origin = `https://${c.domain}`;
 
