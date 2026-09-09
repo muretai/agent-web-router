@@ -136,7 +136,7 @@ export function publicKeyFromDid(did) {
   return Buffer.from(publicKeyHexFromDid(did), 'hex');
 }
 
-export const VERSION = '0.6.1';
+export const VERSION = '0.6.2';
 export const MCP_SERVER_CARD_PATH = '/.well-known/mcp.json';
 export const DID_CONFIGURATION_PATH = '/.well-known/did-configuration.json';
 export const LLMS_TXT_PATH = '/llms.txt';

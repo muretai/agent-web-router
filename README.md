@@ -56,7 +56,7 @@ card names, with a key the agent already holds, and verify the signed reply. It 
 browse, scrape, or mint keys: when a person is already on the page, it hands the page to the
 browser your harness already has.
 
-Zero dependencies. Node ≥ 20. MIT. Status: **0.6.1** — `npm i @muretai/agent-web-router`, or run it directly: `npx @muretai/agent-web-router probe <url>`.
+Zero dependencies. Node ≥ 20. MIT. Status: **0.6.2** — `npm i @muretai/agent-web-router`, or run it directly: `npx @muretai/agent-web-router probe <url>`.
 
 ## Try it
 
@@ -84,7 +84,7 @@ only observable by running the page, so the probe never claims it.
 Output, for a site that published a card and a couple of declarative tools:
 
 ```
-agent-web-router 0.6.1 · https://shop.example
+agent-web-router 0.6.2 · https://shop.example
 
 ways in
   card   did:key:z6MkExample…
